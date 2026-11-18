@@ -140,7 +140,26 @@ l'ESP, `grabFruitIfAny()` est appelée au début de chaque itération des fermes
 (niveau, boss, mob) : le farm en cours laisse sa cible, tp sur le fruit, ramasse,
 auto-store, puis reprend. C'est le comportement « fruit avant tout » des hubs.
 
-### Webhook — tout
+### Boss de la mer
+
+Onglet Combat → section **Boss de la mer** : la liste dépend de `game.PlaceId`
+(First / Second / Third Sea), un bouton par boss. Un clic remplit
+`CONFIG.Combat.bossName` et lance `FarmBoss` (tp + attaque en boucle). Relance
+le script après un changement de mer pour avoir la bonne liste.
+
+Noms repris du guide de référence (nov. 2026) : Gorilla King, Chef, The Saw,
+Yeti, Warden, Magma General, Fishman Lord, Sky Warlord, Lightning God, Cyborg,
+Ice Admiral, Diamond, Jeremy, Don Swan, Smoke Admiral, Awakened Ice Admiral,
+Tide Keeper, rip_indra, Darkbeard, Stone, Hydra Leader, Kilo Admiral, Captain
+Elephant, Beautiful Pirate, Longma, Cursed Skeleton Boss, Cake Queen, Heaven's
+Guardian, Hell's Messenger, Soul Reaper, Cake Prince, Dough King,
+rip_indra True Form.
+
+Un boss absent de la zone (invocation, event, dimension) ne se tp pas : le
+`farm boss` tourne alors en « introuvable — attente ».
+
+### Webhook
+ — tout
 
 Fruits ramassés (nom + joueur), points de stat distribués, niveaux (nouveau
 palier atteint), test manuel. Styles d'alerte émis depuis le thread principal

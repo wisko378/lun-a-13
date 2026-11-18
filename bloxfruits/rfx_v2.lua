@@ -1969,6 +1969,32 @@ task.spawn(function()
 end)
 
 -- ══════════════════════════════════════════════════════════════
+--  BOSS — liste par mer (noms issus du guide de référence)
+-- ══════════════════════════════════════════════════════════════
+local BOSSES = {
+    [1] = {
+        "The Gorilla King", "Chef", "The Saw", "Yeti", "Mob Leader",
+        "Vice Admiral", "Saber Expert", "Warden", "Magma General",
+        "Fishman Lord", "Sky Warlord", "Lightning God", "Cyborg",
+        "Ice Admiral",
+    },
+    [2] = {
+        "Diamond", "Jeremy", "Don Swan", "Smoke Admiral",
+        "Awakened Ice Admiral", "Tide Keeper", "rip_indra", "Darkbeard",
+    },
+    [3] = {
+        "Stone", "Hydra Leader", "Kilo Admiral", "Captain Elephant",
+        "Beautiful Pirate", "Longma", "Cursed Skeleton Boss", "Cake Queen",
+        "Heaven's Guardian", "Hell's Messenger", "Soul Reaper",
+        "Cake Prince", "Dough King", "rip_indra True Form",
+    },
+}
+
+function BossesForSea(n)
+    return BOSSES[n] or {}
+end
+
+-- ══════════════════════════════════════════════════════════════
 --  BOUTIQUE — haki et objets du marchand
 -- ══════════════════════════════════════════════════════════════
 local Shop = {}
@@ -3048,6 +3074,43 @@ makeButton(combatPage, "Lister les chips", function()
     CONFIG.Raid.chip = list[1]
     setStatus("chip choisi : " .. list[1] .. " (" .. #list .. " dispo)")
 end, 28)
+
+makeSectionLabel(combatPage, "Boss de la mer")
+
+local seaNow = currentSea()
+local bossNames = BossesForSea(seaNow and seaNow.n or 0)
+
+if #bossNames == 0 then
+    makeInfo(combatPage, "mer inconnue — liste indisponible", 16)
+else
+    local bossScroll = new("ScrollingFrame", {
+        Size = UDim2.new(1, 0, 0, 150),
+        BackgroundColor3 = C.row,
+        BorderSizePixel = 0,
+        ScrollBarThickness = 3,
+        CanvasSize = UDim2.new(0, 0, 0, #bossNames * 29),
+        ScrollingDirection = Enum.ScrollingDirection.Y,
+    }, combatPage)
+    corner(bossScroll, 6)
+    new("UIListLayout", {
+        Padding = UDim.new(0, 3),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+    }, bossScroll)
+    new("UIPadding", {
+        PaddingTop = UDim.new(0, 5),
+        PaddingBottom = UDim.new(0, 5),
+        PaddingLeft = UDim.new(0, 5),
+        PaddingRight = UDim.new(0, 5),
+    }, bossScroll)
+
+    for _, name in ipairs(bossNames) do
+        makeButton(bossScroll, name, function()
+            CONFIG.Combat.bossName = name
+            setStatus("boss → " .. name)
+            if not FarmBoss.active then FarmBoss.start() end
+        end, 26)
+    end
+end
 
 makeSectionLabel(combatPage, "Boutique")
 
