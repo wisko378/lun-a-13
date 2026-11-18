@@ -78,7 +78,41 @@ qui est rechargée. Un script collé à la main n'a pas d'URL → le bouton rép
 L'état est mémorisé dans `getgenv().RFX_AUTOEXEC`, donc une ré-exécution
 ré-arme automatiquement la file.
 
+### Mêlée
+
+Onglet Combat → section **Mêlée** : un bouton par style (Black Leg, Electro,
+Fishman Karate, Superhuman, Death Step, Sharkman Karate, Electric Claw, Dragon
+Talon, Godhuman, Sanguine Art).
+
+Chaque bouton : détection du Tool dans le sac → équipement direct s'il est déjà
+là, sinon **simulation d'interaction PNJ** (tp sur le PNJ, `ProximityPrompt` /
+`ClickDetector` déclenchés) puis `CommF_:InvokeServer("Buy<Style>")` (relancé
+avec `true` pour les paliers à fragments), puis équipement.
+Toggle **Auto équiper la mêlée** : rééquipe le style dès qu'il est dans le sac.
+
+Les remotes ne créent rien : le serveur vérifie le Beli, les fragments et les
+prérequis de quête (Godhuman demande les 5 styles précédents).
+
+### Raid
+
+Onglet Combat → section **Raid** : champ chip, **Acheter le chip**
+(`RaidsNpc Select <chip>`), **Démarrer le raid** (remote + dialogue du PNJ Raid),
+**Auto raid** (farm des `Island 1..5` de `_WorldOrigin.Locations`) et
+**Lister les chips** (lecture de `ReplicatedStorage.Raids` : `raids` +
+`advancedRaids`). Réservé aux Sea 2 / Sea 3.
+
+Le démarrage est la partie la moins sûre : la remote documentée ne couvre que
+l'achat du chip, le lancement passe par le dialogue du PNJ. Statut affiché à
+chaque tentative.
+
+### Îles
+
+Onglet TP → section **Îles** : champ de nom + **TP sur l'île** (recherche
+partielle dans `_WorldOrigin.Locations`), raccourci **TP usine (Factory)** et
+**Lister les îles** pour voir les noms réels de ta mer.
+
 ### Webhook
+
 
 Notifications Discord depuis l'onglet Web : fruits ramassés, résumé du farm,
 message de test. POST JSON avec `request` / `http_request` / `syn.request` /

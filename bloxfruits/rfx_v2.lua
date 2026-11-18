@@ -127,6 +127,10 @@ local CONFIG = {
         attackRate    = 0.12,
         autoEquip     = true,
     },
+    Raid = {
+        chip = "",
+        auto = false,
+    },
     Webhook = {
         url          = "",
         notifyFruits = true,
@@ -1671,6 +1675,263 @@ function Webhook.send(title, description, color)
 end
 
 -- ══════════════════════════════════════════════════════════════
+--  OUTILS DE RECHERCHE — PNJ, outils, îles
+-- ══════════════════════════════════════════════════════════════
+local function findToolByName(name)
+    local want = name:lower()
+    local char = getChar()
+    local containers = { char, LocalPlayer:FindFirstChild("Backpack") }
+
+    for _, container in ipairs(containers) do
+        if container then
+            for _, tool in ipairs(container:GetChildren()) do
+                if tool:IsA("Tool") then
+                    local n = tool.Name:lower():gsub("%s*%[.*%]$", "")
+                    if n == want or n:find(want, 1, true) then return tool end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function findActor(name)
+    local needle = name:lower()
+
+    local function scan(container, depth)
+        if depth > 2 then return nil end
+        for _, inst in ipairs(container:GetChildren()) do
+            if inst:IsA("Model") and inst:FindFirstChild("HumanoidRootPart") then
+                local n = inst.Name:lower()
+                if n == needle or n:find(needle, 1, true) then return inst end
+            end
+            local found = scan(inst, depth + 1)
+            if found then return found end
+        end
+        return nil
+    end
+
+    return scan(workspace, 0)
+end
+
+local function islandFolder()
+    local world = workspace:FindFirstChild("_WorldOrigin")
+    if not world then return nil end
+    return world:FindFirstChild("Locations")
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  MELEE — achat, dialogue PNJ, équipement
+-- ══════════════════════════════════════════════════════════════
+local MELEE = {
+    { label = "Black Leg",       remote = "BuyBlackLeg",       tool = "Black Leg" },
+    { label = "Electro",         remote = "BuyElectro",        tool = "Electro" },
+    { label = "Fishman Karate",  remote = "BuyFishmanKarate",  tool = "Fishman Karate" },
+    { label = "Superhuman",      remote = "BuySuperhuman",     tool = "Superhuman" },
+    { label = "Death Step",      remote = "BuyDeathStep",      tool = "Death Step" },
+    { label = "Sharkman Karate", remote = "BuySharkmanKarate", tool = "Sharkman Karate" },
+    { label = "Electric Claw",   remote = "BuyElectricClaw",   tool = "Electric Claw" },
+    { label = "Dragon Talon",    remote = "BuyDragonTalon",    tool = "Dragon Talon" },
+    { label = "Godhuman",        remote = "BuyGodhuman",       tool = "Godhuman" },
+    { label = "Sanguine Art",    remote = "BuySanguineArt",    tool = "Sanguine Art" },
+}
+
+local Melee = { auto = false }
+
+function Melee.equip(name)
+    local tool = findToolByName(name)
+    if not tool then return false end
+
+    local char = getChar()
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return false end
+
+    pcall(function() hum:EquipTool(tool) end)
+    return true
+end
+
+function Melee.talk(name)
+    local npc = findActor(name)
+    if not npc then return false end
+
+    local root = npc:FindFirstChild("HumanoidRootPart")
+    if root then
+        Movement.tp(root.Position)
+        task.wait(0.6)
+    end
+
+    for _, d in ipairs(npc:GetDescendants()) do
+        if d:IsA("ProximityPrompt") then
+            pcall(function() d:InputHoldBegin() end)
+            pcall(function() fireproximityprompt(d) end)
+        end
+        if d:IsA("ClickDetector") and type(fireclickdetector) == "function" then
+            pcall(function() fireclickdetector(d) end)
+        end
+    end
+    return true
+end
+
+function Melee.buy(entry)
+    local remote = Remotes.get()
+    if not remote then return false end
+
+    pcall(function() remote:InvokeServer(entry.remote) end)
+    task.wait(0.3)
+    pcall(function() remote:InvokeServer(entry.remote, true) end)
+
+    return Melee.equip(entry.tool)
+end
+
+function Melee.acquire(entry)
+    if Melee.equip(entry.tool) then
+        setStatus("équipé : " .. entry.tool)
+        return true
+    end
+
+    Melee.talk(entry.tool)
+    local ok = Melee.buy(entry)
+
+    setStatus(ok and ("appris + équipé : " .. entry.tool) or ("achat refusé : " .. entry.tool))
+    return ok
+end
+
+task.spawn(function()
+    while true do
+        task.wait(2)
+        if Melee.auto then
+            for _, entry in ipairs(MELEE) do
+                if findToolByName(entry.tool) then
+                    Melee.equip(entry.tool)
+                    break
+                end
+            end
+        end
+    end
+end)
+
+-- ══════════════════════════════════════════════════════════════
+--  ÎLES — tp sur une île par son nom
+-- ══════════════════════════════════════════════════════════════
+local Islands = {}
+
+function Islands.names()
+    local list = {}
+    local folder = islandFolder()
+    if folder then
+        for _, inst in ipairs(folder:GetChildren()) do list[#list + 1] = inst.Name end
+    end
+    return list
+end
+
+function Islands.tp(name)
+    local folder = islandFolder()
+    if not folder then
+        setStatus("_WorldOrigin.Locations absent")
+        return false
+    end
+
+    local needle = name:lower()
+    for _, inst in ipairs(folder:GetChildren()) do
+        if inst.Name:lower():find(needle, 1, true) then
+            local pos = getPosition(inst)
+            if pos then
+                Movement.tp(pos + Vector3.new(0, 30, 0))
+                setStatus("tp île → " .. inst.Name)
+                return true
+            end
+        end
+    end
+
+    setStatus("île introuvable : " .. name)
+    return false
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  RAID — chip, lancement, farm des îles
+-- ══════════════════════════════════════════════════════════════
+local Raid = { auto = false }
+
+function Raid.chips()
+    local list = {}
+    local mod = ReplicatedStorage:FindFirstChild("Raids")
+    if not mod then return list end
+
+    local ok, data = pcall(function() return require(mod) end)
+    if not ok or type(data) ~= "table" then return list end
+
+    for _, v in pairs(data.raids or {}) do
+        if type(v) == "string" then list[#list + 1] = v end
+    end
+    for _, v in pairs(data.advancedRaids or {}) do
+        if type(v) == "string" then list[#list + 1] = v end
+    end
+    return list
+end
+
+function Raid.buyChip(chip)
+    if chip == "" then
+        setStatus("raid : choisis un chip")
+        return false
+    end
+    Remotes.invoke("RaidsNpc", "Select", chip)
+    setStatus("chip → " .. chip)
+    return true
+end
+
+function Raid.start()
+    local remote = Remotes.get()
+    if not remote then return false end
+
+    if CONFIG.Raid.chip ~= "" then
+        pcall(function() remote:InvokeServer("RaidsNpc", "Select", CONFIG.Raid.chip) end)
+        task.wait(0.5)
+    end
+
+    pcall(function() remote:InvokeServer("RaidsNpc", "Start") end)
+    task.wait(0.4)
+
+    if findActor("Raid") then
+        Melee.talk("Raid")
+        task.wait(0.4)
+        pcall(function() remote:InvokeServer("RaidsNpc", "Start") end)
+    end
+
+    setStatus("raid : lancement tenté (chip " .. (CONFIG.Raid.chip ~= "" and CONFIG.Raid.chip or "aucun") .. ")")
+    return true
+end
+
+function Raid.farmOnce()
+    local folder = islandFolder()
+    if not folder then return false end
+
+    for i = 5, 1, -1 do
+        for _, inst in ipairs(folder:GetChildren()) do
+            if inst.Name == "Island " .. i then
+                local pos = getPosition(inst)
+                if pos then
+                    Movement.tp(pos + Vector3.new(0, 70, 0))
+                    task.wait(0.3)
+                    Combat.equip()
+                    Combat.hit(Combat.nearest(nil, 0))
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if Raid.auto then
+            Raid.farmOnce()
+        end
+    end
+end)
+
+-- ══════════════════════════════════════════════════════════════
 --  UI
 -- ══════════════════════════════════════════════════════════════
 local UI = {
@@ -2297,6 +2558,43 @@ makeButton(tpPage, "Aller en Sea 1  (First Sea)", function() goSea(1) end)
 makeButton(tpPage, "Aller en Sea 2  (Second Sea)", function() goSea(2) end)
 makeButton(tpPage, "Aller en Sea 3  (Third Sea)", function() goSea(3) end)
 
+makeSectionLabel(tpPage, "Îles")
+
+local islandBox = new("TextBox", {
+    Size = UDim2.new(1, 0, 0, 30),
+    BackgroundColor3 = C.row,
+    BorderSizePixel = 0,
+    Text = "",
+    PlaceholderText = "nom d'île (ex: Factory)",
+    TextColor3 = C.text,
+    PlaceholderColor3 = C.sub,
+    Font = Enum.Font.Gotham,
+    TextSize = 11,
+    ClearTextOnFocus = false,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, tpPage)
+corner(islandBox, 6)
+new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, islandBox)
+
+makeButton(tpPage, "TP sur l'île", function()
+    Islands.tp(islandBox.Text)
+end, 30)
+
+makeButton(tpPage, "TP usine (Factory)", function()
+    Islands.tp("Factory")
+end, 30)
+
+makeButton(tpPage, "Lister les îles", function()
+    local names = Islands.names()
+    if #names == 0 then
+        setStatus("aucune île lue")
+        return
+    end
+    local head = {}
+    for i = 1, math.min(#names, 6) do head[i] = names[i] end
+    setStatus(table.concat(head, ", "))
+end, 28)
+
 makeSectionLabel(tpPage, "Raccourcis")
 
 makeButton(tpPage, "TP fruit le plus proche  (T)", function()
@@ -2541,6 +2839,67 @@ makeToggle(combatPage, "Auto équiper une arme", CONFIG.Combat.autoEquip, functi
     CONFIG.Combat.autoEquip = v
 end)
 
+makeSectionLabel(combatPage, "Mêlée")
+makeInfo(combatPage, "dialogue PNJ + achat + équipement", 16)
+
+for _, entry in ipairs(MELEE) do
+    makeButton(combatPage, entry.label, function()
+        Melee.acquire(entry)
+    end, 28)
+end
+
+makeToggle(combatPage, "Auto équiper la mêlée", false, function(v)
+    Melee.auto = v
+end)
+
+makeSectionLabel(combatPage, "Raid")
+
+local chipBox = new("TextBox", {
+    Size = UDim2.new(1, 0, 0, 30),
+    BackgroundColor3 = C.row,
+    BorderSizePixel = 0,
+    Text = CONFIG.Raid.chip,
+    PlaceholderText = "chip de raid (ex: Flame)",
+    TextColor3 = C.text,
+    PlaceholderColor3 = C.sub,
+    Font = Enum.Font.Gotham,
+    TextSize = 11,
+    ClearTextOnFocus = false,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, combatPage)
+corner(chipBox, 6)
+new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, chipBox)
+
+chipBox.FocusLost:Connect(function()
+    CONFIG.Raid.chip = chipBox.Text
+end)
+
+makeButton(combatPage, "Acheter le chip", function()
+    CONFIG.Raid.chip = chipBox.Text
+    Raid.buyChip(chipBox.Text)
+end, 30)
+
+makeButton(combatPage, "Démarrer le raid", function()
+    CONFIG.Raid.chip = chipBox.Text
+    Raid.start()
+end, 30)
+
+makeToggle(combatPage, "Auto raid (farm des îles)", false, function(v)
+    Raid.auto = v
+    CONFIG.Raid.auto = v
+end)
+
+makeButton(combatPage, "Lister les chips", function()
+    local list = Raid.chips()
+    if #list == 0 then
+        setStatus("chips : module Raids illisible (Sea 1 ?)")
+        return
+    end
+    chipBox.Text = list[1]
+    CONFIG.Raid.chip = list[1]
+    setStatus("chip choisi : " .. list[1] .. " (" .. #list .. " dispo)")
+end, 28)
+
 ---------------------------------------------------------------
 --  WEBHOOK PAGE
 ---------------------------------------------------------------
@@ -2767,6 +3126,9 @@ _G.RFX_Unload = function()
     FarmLevel.active = false
     FarmBoss.active = false
     Combat.fastAttack = false
+    Melee.auto = false
+    Raid.auto = false
+    CONFIG.Raid.auto = false
     CONFIG.Stats.active = false
     CONFIG.Protect.antiKick = false
     CONFIG.Protect.spoofHumanoid = false
