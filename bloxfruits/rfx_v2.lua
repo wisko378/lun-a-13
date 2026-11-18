@@ -1340,6 +1340,29 @@ function Farm.toggle()
     return true
 end
 
+-- priorité fruit : les autres farms laissent tomber leur cible
+local function grabFruitIfAny()
+    if CONFIG.Farm.priorityFruit == false then return false end
+
+    local inst, pos = nearest("Fruit", fruitFilter)
+    if not inst or not pos then return false end
+
+    setStatus("priorité fruit → " .. inst.Name)
+    Movement.tp(pos)
+    task.wait(0.25)
+    collect(inst)
+
+    for _ = 1, CONFIG.Farm.pickupRetry do
+        task.wait(0.25)
+        if not inst.Parent then break end
+        collect(inst)
+    end
+
+    task.wait(0.2)
+    if CONFIG.Farm.autoStore then Store.all() end
+    return true
+end
+
 -- auto-hop passif hors farm
 task.spawn(function()
     while true do
@@ -1535,9 +1558,21 @@ function FarmLevel.start()
 
     task.spawn(function()
         task.wait(1)
+        local lastLevel = 0
 
         while FarmLevel.active and FarmLevel.token == myToken do
+            grabFruitIfAny()
+
             local level = playerLevel()
+            if lastLevel > 0 and level > lastLevel then
+                if CONFIG.Webhook.notifyLevel ~= false then
+                    pcall(function()
+                        Webhook.send("Niveau " .. level, LocalPlayer.Name .. " • place " .. tostring(game.PlaceId), 3066993)
+                    end)
+                end
+            end
+            lastLevel = level
+
             local q = FarmLevel.entryFor(level)
 
             if level >= CONFIG.Farm.maxLevel then
@@ -1591,6 +1626,8 @@ function FarmBoss.start()
         task.wait(1)
 
         while FarmBoss.active and FarmBoss.token == myToken do
+            grabFruitIfAny()
+
             local boss = Combat.nearest(CONFIG.Combat.bossName, CONFIG.Combat.bossMinHealth)
 
             if boss then
@@ -1975,6 +2012,8 @@ task.spawn(function()
     while true do
         task.wait(0.35)
         if MobFarm.active then
+            grabFruitIfAny()
+
             if MobFarm.island ~= "" and os.clock() - lastTp > 6 then
                 Islands.tp(MobFarm.island)
                 lastTp = os.clock()
@@ -2520,6 +2559,10 @@ makeToggle(farmPage, "Auto store fruit", CONFIG.Farm.autoStore, function(v)
     CONFIG.Farm.autoStore = v
 end)
 
+makeToggle(farmPage, "Priorité fruit (coupe les autres farms)", true, function(v)
+    CONFIG.Farm.priorityFruit = v
+end)
+
 makeToggle(farmPage, "Server hop si vide", CONFIG.Farm.hopOnEmpty, function(v)
     CONFIG.Farm.hopOnEmpty = v
 end)
@@ -2657,15 +2700,48 @@ makeButton(tpPage, "TP usine (Factory)", function()
     Islands.tp("Factory")
 end, 30)
 
-makeButton(tpPage, "Lister les îles", function()
-    local names = Islands.names()
-    if #names == 0 then
-        setStatus("aucune île lue")
-        return
+local islandList = new("ScrollingFrame", {
+    Size = UDim2.new(1, 0, 0, 170),
+    BackgroundColor3 = C.row,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 3,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    ScrollingDirection = Enum.ScrollingDirection.Y,
+}, tpPage)
+corner(islandList, 6)
+new("UIListLayout", {
+    Padding = UDim.new(0, 3),
+    SortOrder = Enum.SortOrder.LayoutOrder,
+}, islandList)
+new("UIPadding", {
+    PaddingTop = UDim.new(0, 5),
+    PaddingBottom = UDim.new(0, 5),
+    PaddingLeft = UDim.new(0, 5),
+    PaddingRight = UDim.new(0, 5),
+}, islandList)
+
+local function refreshIslandList()
+    for _, child in ipairs(islandList:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
     end
-    local head = {}
-    for i = 1, math.min(#names, 6) do head[i] = names[i] end
-    setStatus(table.concat(head, ", "))
+
+    local names = Islands.names()
+    table.sort(names)
+
+    for _, name in ipairs(names) do
+        makeButton(islandList, name, function()
+            Islands.tp(name)
+        end, 26)
+    end
+
+    islandList.CanvasSize = UDim2.new(0, 0, 0, #names * 29)
+    setStatus(#names > 0 and (#names .. " îles listées") or "aucune île lue")
+end
+
+refreshIslandList()
+
+makeButton(tpPage, "Rafraîchir la liste des îles", function()
+    refreshIslandList()
 end, 28)
 
 makeSectionLabel(tpPage, "Raccourcis")
@@ -3104,6 +3180,10 @@ end)
 
 makeToggle(webPage, "Notifier les points de stat", CONFIG.Webhook.notifyStats, function(v)
     CONFIG.Webhook.notifyStats = v
+end)
+
+makeToggle(webPage, "Notifier les niveaux", true, function(v)
+    CONFIG.Webhook.notifyLevel = v
 end)
 
 makeButton(webPage, "Envoyer un test", function()

@@ -125,7 +125,29 @@ Onglet Combat, sous la section Raid :
 - **Quêtes** — `CurrentQuest` (diagnostic), `EndQuest` (valider),
   `AbandonQuest` (jeter la quête en cours).
 
+### Liste des îles
+
+Onglet TP → section **Îles** : la liste des îles est lue à l'ouverture
+(`workspace._WorldOrigin.Locations`), triée, et chaque nom devient un bouton de
+téléportation dans un panneau scrollable. Bouton **Rafraîchir** après un
+changement de mer, puisque les îles n'ont pas les mêmes noms d'une mer à
+l'autre. Le champ libre et le raccourci **TP usine (Factory)** restent là.
+
+### Priorité fruit
+
+Toggle onglet Farm, actif par défaut. Dès qu'un fruit apparaît dans le rayon de
+l'ESP, `grabFruitIfAny()` est appelée au début de chaque itération des fermes
+(niveau, boss, mob) : le farm en cours laisse sa cible, tp sur le fruit, ramasse,
+auto-store, puis reprend. C'est le comportement « fruit avant tout » des hubs.
+
+### Webhook — tout
+
+Fruits ramassés (nom + joueur), points de stat distribués, niveaux (nouveau
+palier atteint), test manuel. Styles d'alerte émis depuis le thread principal
+du script, en `pcall`, donc un webhook mort ne casse jamais le farm.
+
 ### Webhook
+
 
 
 
