@@ -118,6 +118,7 @@ local CONFIG = {
         solo         = false,
         pickupRetry  = 3,
         collectDelay = 0.8,
+        maxLevel     = 2600,
     },
     Combat = {
         bossName      = "",
@@ -153,21 +154,101 @@ local TARGET_CYCLE = {
 
 local STAT_LIST = { "Melee", "Defense", "Sword", "Gun", "Demon Fruit" }
 
--- Paliers de quête connus (clé + niveau renvoyés à CommF_ StartQuest).
--- Au-delà, le farm level s'arrête proprement au lieu d'inventer une clé.
+-- Chaîne de quêtes complète : { niveau min, niveau max, mob, clé NPC, niveau de quête }
+-- Sources : tables publiques de farm (Sea 1 / Sea 2 / Sea 3). Au-delà de la
+-- dernière entrée le farm garde le dernier palier au lieu d'inventer une clé.
 local QUESTS = {
-    { from = 1,   to = 9,   mob = "Bandit",              quest = "BanditQuest1", qlvl = 1 },
-    { from = 10,  to = 14,  mob = "Monkey",              quest = "JungleQuest",  qlvl = 1 },
-    { from = 15,  to = 29,  mob = "Gorilla",             quest = "JungleQuest",  qlvl = 2 },
-    { from = 30,  to = 39,  mob = "Pirate",              quest = "BuggyQuest1",  qlvl = 1 },
-    { from = 40,  to = 59,  mob = "Brute",               quest = "BuggyQuest1",  qlvl = 2 },
-    { from = 60,  to = 74,  mob = "Desert Bandit",       quest = "DesertQuest",  qlvl = 1 },
-    { from = 75,  to = 89,  mob = "Desert Officer",      quest = "DesertQuest",  qlvl = 2 },
-    { from = 90,  to = 119, mob = "Snow Bandit",         quest = "SnowQuest",    qlvl = 1 },
-    { from = 120, to = 149, mob = "Snowman",             quest = "SnowQuest",    qlvl = 2 },
-    { from = 150, to = 174, mob = "Chief Petty Officer", quest = "MarineQuest2", qlvl = 1 },
-    { from = 175, to = 209, mob = "Sky Bandit",          quest = "SkyQuest",     qlvl = 1 },
-    { from = 210, to = 249, mob = "Dark Master",         quest = "SkyQuest",     qlvl = 2 },
+    -- Sea 1
+    { 1,    9,    "Bandit",               "BanditQuest1",       1 },
+    { 10,   14,   "Monkey",               "JungleQuest",        1 },
+    { 15,   29,   "Gorilla",              "JungleQuest",        2 },
+    { 30,   39,   "Pirates",              "BuggyQuest1",        1 },
+    { 40,   59,   "Brute",                "BuggyQuest1",        2 },
+    { 60,   74,   "Desert Bandit",        "DesertQuest",        1 },
+    { 75,   89,   "Desert Officer",       "DesertQuest",        2 },
+    { 90,   99,   "Snow Bandits",         "SnowQuest",          1 },
+    { 100,  119,  "Snowman",              "SnowQuest",          2 },
+    { 120,  149,  "Chief Petty Officer",  "MarineQuest2",       1 },
+    { 150,  174,  "Sky Bandit",           "SkyQuest",           1 },
+    { 175,  224,  "Dark Master",          "SkyQuest",           2 },
+    { 225,  274,  "Toga Warrior",         "ColosseumQuest",     1 },
+    { 275,  299,  "Gladiator",            "ColosseumQuest",     2 },
+    { 300,  329,  "Military Soldier",     "MagmaQuest",         1 },
+    { 330,  374,  "Military Spy",         "MagmaQuest",         2 },
+    { 375,  399,  "Fishman Warrior",      "FishmanQuest",       1 },
+    { 400,  449,  "Fishman Commando",     "FishmanQuest",       2 },
+    { 450,  474,  "God's Guards",         "SkyExp1Quest",       1 },
+    { 475,  524,  "Shandas",              "SkyExp1Quest",       2 },
+    { 525,  549,  "Royal Squad",          "SkyExp2Quest",       1 },
+    { 550,  624,  "Royal Soldier",        "SkyExp2Quest",       2 },
+    { 625,  649,  "Galley Pirate",        "FountainQuest",      1 },
+    { 650,  699,  "Galley Captain",       "FountainQuest",      2 },
+    -- Sea 2
+    { 700,  724,  "Raider",               "Area1Quest",         1 },
+    { 725,  774,  "Mercenary",            "Area1Quest",         2 },
+    { 775,  799,  "Swan Pirate",          "Area2Quest",         1 },
+    { 800,  874,  "Factory Staff",        "Area2Quest",         2 },
+    { 875,  899,  "Marine Lieutenant",    "MarineQuest3",       1 },
+    { 900,  949,  "Marine Captain",       "MarineQuest3",       2 },
+    { 950,  974,  "Zombie",               "ZombieQuest",        1 },
+    { 975,  999,  "Vampire",              "ZombieQuest",        2 },
+    { 1000, 1049, "Snow Trooper",         "SnowMountainQuest",  1 },
+    { 1050, 1099, "Winter Warrior",       "SnowMountainQuest",  2 },
+    { 1100, 1124, "Lab Subordinate",      "IceSideQuest",       1 },
+    { 1125, 1174, "Horned Warrior",       "IceSideQuest",       2 },
+    { 1175, 1199, "Magma Ninja",          "FireSideQuest",      1 },
+    { 1200, 1249, "Lava Pirate",          "FireSideQuest",      2 },
+    { 1250, 1274, "Ship Deckhand",        "ShipQuest1",         1 },
+    { 1275, 1299, "Ship Engineer",        "ShipQuest1",         2 },
+    { 1300, 1324, "Ship Steward",         "ShipQuest2",         1 },
+    { 1325, 1349, "Ship Officer",         "ShipQuest2",         2 },
+    { 1350, 1374, "Arctic Warrior",       "FrostQuest",         1 },
+    { 1375, 1424, "Snow Lurker",          "FrostQuest",         2 },
+    { 1425, 1449, "Sea Soldier",          "ForgottenQuest",     1 },
+    { 1450, 1499, "Water Fighter",        "ForgottenQuest",     2 },
+    -- Sea 3
+    { 1500, 1524, "Pirate Millionaire",   "PiratePortQuest",    1 },
+    { 1525, 1549, "Pistol Billionaire",   "PiratePortQuest",    2 },
+    { 1550, 1574, "Stone",                "PiratePortQuest",    3 },
+    { 1575, 1599, "Dragon Crew Warrior",  "AmazonQuest",        1 },
+    { 1600, 1624, "Dragon Crew Archer",   "AmazonQuest",        2 },
+    { 1625, 1649, "Female Islander",      "AmazonQuest2",       1 },
+    { 1650, 1674, "Giant Islander",       "AmazonQuest2",       2 },
+    { 1675, 1699, "Island Empress",       "AmazonQuest2",       3 },
+    { 1700, 1724, "Marine Commodore",     "MarineTreeIsland",   1 },
+    { 1725, 1749, "Marine Rear Admiral",  "MarineTreeIsland",   2 },
+    { 1750, 1774, "Kilo Admiral",         "MarineTreeIsland",   3 },
+    { 1775, 1799, "Fishman Raider",       "DeepForestIsland3",  1 },
+    { 1800, 1824, "Fishman Captain",      "DeepForestIsland3",  2 },
+    { 1825, 1849, "Forest Pirate",        "DeepForestIsland",   1 },
+    { 1850, 1874, "Mythological Pirate",  "DeepForestIsland",   2 },
+    { 1875, 1899, "Captain Elephant",     "DeepForestIsland",   3 },
+    { 1900, 1924, "Jungle Pirate",        "DeepForestIsland2",  1 },
+    { 1925, 1949, "Musketeer Pirate",     "DeepForestIsland2",  2 },
+    { 1950, 1974, "Musketeer Pirate",     "DeepForestIsland2",  3 },
+    { 1975, 1999, "Reborn Skeleton",      "HauntedQuest1",      1 },
+    { 2000, 2024, "Living Zombie",        "HauntedQuest1",      2 },
+    { 2025, 2049, "Demonic Soul",         "HauntedQuest2",      1 },
+    { 2050, 2074, "Posessed Mummy",       "HauntedQuest2",      2 },
+    { 2075, 2099, "Peanut Scout",         "NutsIslandQuest",    1 },
+    { 2100, 2124, "Peanut President",     "NutsIslandQuest",    2 },
+    { 2125, 2149, "Ice Cream Chef",       "IceCreamIslandQuest",1 },
+    { 2150, 2174, "Ice Cream Commander",  "IceCreamIslandQuest",2 },
+    { 2175, 2199, "Cake Queen",           "IceCreamIslandQuest",3 },
+    { 2200, 2224, "Cookie Crafter",       "CakeQuest1",         1 },
+    { 2225, 2249, "Cake Guard",           "CakeQuest1",         2 },
+    { 2250, 2274, "Baking Staff",         "CakeQuest2",         1 },
+    { 2275, 2299, "Head Baker",           "CakeQuest2",         2 },
+    { 2300, 2324, "Cocoa Warrior",        "ChocQuest1",         1 },
+    { 2325, 2349, "Chocolate Bar Battler","ChocQuest1",         2 },
+    { 2350, 2374, "Sweet Thief",          "ChocQuest2",         1 },
+    { 2375, 2399, "Candy Rebel",          "ChocQuest2",         2 },
+    { 2400, 2424, "Candy Pirate",         "CandyQuest1",        1 },
+    { 2425, 2449, "Snow Demon",           "CandyQuest1",        2 },
+    { 2450, 2474, "Isle Outlaw",          "TikiQuest1",         1 },
+    { 2475, 2499, "Island Boy",           "TikiQuest1",         2 },
+    { 2500, 2524, "Sun-kissed Warrior",   "TikiQuest2",         1 },
+    { 2525, 9999, "Isle Champion",        "TikiQuest2",         2 },
 }
 
 -- ══════════════════════════════════════════════════════════════
@@ -1210,6 +1291,36 @@ function Combat.nearest(name, minHealth)
     return best
 end
 
+local function normalizeEnemy(name)
+    local n = name:lower()
+    n = n:gsub("%s*%[lv%.%s*%d+%s*%]%s*$", "")
+    n = n:gsub("^%s+", ""):gsub("%s+$", "")
+    return n
+end
+
+function Combat.nearestExact(target)
+    if not target then return Combat.nearest() end
+
+    local want = normalizeEnemy(target)
+    local hrp = getHRP()
+    if not hrp then return nil end
+
+    local best, bestDist
+    for _, e in ipairs(Combat.enemies()) do
+        local name = normalizeEnemy(e.Name)
+        if name == want or name == want .. "s" or name .. "s" == want then
+            local root = e:FindFirstChild("HumanoidRootPart")
+            if root then
+                local d = (root.Position - hrp.Position).Magnitude
+                if not bestDist or d < bestDist then
+                    best, bestDist = e, d
+                end
+            end
+        end
+    end
+    return best
+end
+
 function Combat.equip()
     if not CONFIG.Combat.autoEquip then return end
 
@@ -1284,10 +1395,16 @@ local function hasQuest()
 end
 
 function FarmLevel.entryFor(level)
+    local found
     for _, q in ipairs(QUESTS) do
-        if level >= q.from and level <= q.to then return q end
+        if level >= q[1] then
+            found = { from = q[1], to = q[2], mob = q[3], quest = q[4], qlvl = q[5] }
+        end
+        if level >= q[1] and level <= q[2] then
+            break
+        end
     end
-    return nil
+    return found
 end
 
 function FarmLevel.start()
@@ -1303,17 +1420,21 @@ function FarmLevel.start()
             local level = playerLevel()
             local q = FarmLevel.entryFor(level)
 
-            if not q then
+            if level >= CONFIG.Farm.maxLevel then
+                setStatus("niveau max atteint (" .. level .. ")")
+                FarmLevel.active = false
+                task.wait(1)
+            elseif not q then
                 setStatus("farm level : palier inconnu (lv " .. level .. ")")
                 task.wait(2)
             else
                 if not hasQuest() then
-                    setStatus("farm level : quête " .. q.quest)
+                    setStatus("farm level " .. level .. " : quête " .. q.quest)
                     Remotes.invoke("StartQuest", q.quest, q.qlvl)
                     task.wait(0.8)
                 end
 
-                local enemy = Combat.nearest(q.mob)
+                local enemy = Combat.nearestExact(q.mob)
                 if enemy then
                     local root = enemy:FindFirstChild("HumanoidRootPart")
                     if root then
@@ -2263,6 +2384,10 @@ end)
 
 makeSlider(combatPage, "Boss — HP minimum", 200, 30000, CONFIG.Combat.bossMinHealth, function(v)
     CONFIG.Combat.bossMinHealth = v
+end)
+
+makeSlider(combatPage, "Farm level — niveau max", 700, 3000, CONFIG.Farm.maxLevel, function(v)
+    CONFIG.Farm.maxLevel = v
 end)
 
 makeSectionLabel(combatPage, "Combat")

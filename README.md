@@ -50,8 +50,15 @@ points par tick réglables, bouton « dépenser tout maintenant ».
 
 - **Auto farm level** : accepte la quête (`CommF_:InvokeServer("StartQuest", <clé>,
   <niveau>)`), TP sur le mob demandé dans `workspace.Enemies`, frappe, enchaîne.
-  Table de paliers intégrée (Bandit → Dark Master, niveaux 1 à 249). Au-delà, le
-  module s'arrête proprement avec `palier inconnu` au lieu d'inventer une clé.
+  Chaîne complète intégrée, **88 paliers de 1 à 2524+** : Sea 1 (Bandit → Galley
+  Captain), Sea 2 (Raider → Water Fighter), Sea 3 (Pirate Millionaire → Isle
+  Champion). Au-delà du dernier palier, le farm garde le dernier et continue
+  jusqu'au `Niveau max` réglé (2600 par défaut, slider 700–3000).
+- Le mob est ciblé par nom exact (suffixe `[Lv. x]` ignoré), pas par sous-chaîne :
+  `Pirate` ne part pas chasser un `Pirate Millionaire`.
+- Les clés de quête changent de mer : le farm suit ton niveau, et le hop garde
+  la même place (Sea 1 `2753915549`, Sea 2 `4442272183`, Sea 3 `7449423635`) —
+  le passage de mer lui-même reste manuel.
 - **Auto farm boss** : nom optionnel (vide = les ennemis les plus costauds,
   seuil `HP minimum` réglable), TP + frappe en boucle.
 - **Attaque rapide (no CD)** : boucle d'attaque sans délai de clic,
