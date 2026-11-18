@@ -158,7 +158,29 @@ rip_indra True Form.
 Un boss absent de la zone (invocation, event, dimension) ne se tp pas : le
 `farm boss` tourne alors en « introuvable — attente ».
 
+### Maîtres de style (encyclopédie)
+
+Chaque bouton de mêlée cible maintenant le **vrai PNJ** et son île :
+
+| Style | Maître | Île |
+|---|---|---|
+| Black Leg | Black Leg | Pirate Village |
+| Electro | Mad Scientist | Skylands |
+| Fishman Karate | Fishman Karate | Underwater City |
+| Superhuman | Martial Arts Master | Snow Mountain |
+| Death Step | Phoeyu | Ice Castle |
+| Sharkman Karate | Sharkman Teacher | Forgotten Island |
+| Electric Claw | Previous Hero | Floating Turtle |
+| Dragon Talon | Uzoth | Hydra Island |
+| Godhuman | Ancient Monk | Floating Turtle |
+| Sanguine Art | Shafi | Tiki Outpost |
+
+Séquence : tp sur l'île → recherche du PNJ par nom → prompt déclenché → achat
+remote → équipement. Les prérequis (maîtrise, fragments, objets de boss) restent
+côté serveur.
+
 ### Webhook
+
  — tout
 
 Fruits ramassés (nom + joueur), points de stat distribués, niveaux (nouveau

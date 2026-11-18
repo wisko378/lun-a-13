@@ -1760,17 +1760,21 @@ end
 -- ══════════════════════════════════════════════════════════════
 --  MELEE — achat, dialogue PNJ, équipement
 -- ══════════════════════════════════════════════════════════════
+local Islands = {}   -- déclaré ici, rempli plus bas : les styles en ont besoin
+
+-- npc + île viennent de l'encyclopédie de référence : le bouton tp sur l'île,
+-- parle au maître, achète, équipe.
 local MELEE = {
-    { label = "Black Leg",       remote = "BuyBlackLeg",       tool = "Black Leg" },
-    { label = "Electro",         remote = "BuyElectro",        tool = "Electro" },
-    { label = "Fishman Karate",  remote = "BuyFishmanKarate",  tool = "Fishman Karate" },
-    { label = "Superhuman",      remote = "BuySuperhuman",     tool = "Superhuman" },
-    { label = "Death Step",      remote = "BuyDeathStep",      tool = "Death Step" },
-    { label = "Sharkman Karate", remote = "BuySharkmanKarate", tool = "Sharkman Karate" },
-    { label = "Electric Claw",   remote = "BuyElectricClaw",   tool = "Electric Claw" },
-    { label = "Dragon Talon",    remote = "BuyDragonTalon",    tool = "Dragon Talon" },
-    { label = "Godhuman",        remote = "BuyGodhuman",       tool = "Godhuman" },
-    { label = "Sanguine Art",    remote = "BuySanguineArt",    tool = "Sanguine Art" },
+    { label = "Black Leg",       remote = "BuyBlackLeg",       tool = "Black Leg",       npc = "Black Leg",            island = "Pirate Village" },
+    { label = "Electro",         remote = "BuyElectro",        tool = "Electro",         npc = "Mad Scientist",        island = "Skylands" },
+    { label = "Fishman Karate",  remote = "BuyFishmanKarate",  tool = "Fishman Karate",  npc = "Fishman Karate",       island = "Underwater City" },
+    { label = "Superhuman",      remote = "BuySuperhuman",     tool = "Superhuman",      npc = "Martial Arts Master",  island = "Snow Mountain" },
+    { label = "Death Step",      remote = "BuyDeathStep",      tool = "Death Step",      npc = "Phoeyu",               island = "Ice Castle" },
+    { label = "Sharkman Karate", remote = "BuySharkmanKarate", tool = "Sharkman Karate", npc = "Sharkman Teacher",     island = "Forgotten Island" },
+    { label = "Electric Claw",   remote = "BuyElectricClaw",   tool = "Electric Claw",   npc = "Previous Hero",        island = "Floating Turtle" },
+    { label = "Dragon Talon",    remote = "BuyDragonTalon",    tool = "Dragon Talon",    npc = "Uzoth",                island = "Hydra Island" },
+    { label = "Godhuman",        remote = "BuyGodhuman",       tool = "Godhuman",        npc = "Ancient Monk",         island = "Floating Turtle" },
+    { label = "Sanguine Art",    remote = "BuySanguineArt",    tool = "Sanguine Art",    npc = "Shafi",                island = "Tiki Outpost" },
 }
 
 local Melee = { auto = false }
@@ -1826,7 +1830,12 @@ function Melee.acquire(entry)
         return true
     end
 
-    Melee.talk(entry.tool)
+    if entry.island and entry.island ~= "" then
+        Islands.tp(entry.island)
+        task.wait(0.8)
+    end
+
+    Melee.talk(entry.npc or entry.tool)
     local ok = Melee.buy(entry)
 
     setStatus(ok and ("appris + équipé : " .. entry.tool) or ("achat refusé : " .. entry.tool))
@@ -1850,7 +1859,7 @@ end)
 -- ══════════════════════════════════════════════════════════════
 --  ÎLES — tp sur une île par son nom
 -- ══════════════════════════════════════════════════════════════
-local Islands = {}
+Islands = Islands or {}
 
 function Islands.names()
     local list = {}
