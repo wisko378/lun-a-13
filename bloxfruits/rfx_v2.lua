@@ -1070,6 +1070,52 @@ TeleportService.TeleportInitFailed:Connect(function()
 end)
 
 -- ══════════════════════════════════════════════════════════════
+--  MERS — chaque mer est une place Roblox différente
+-- ══════════════════════════════════════════════════════════════
+local SEAS = {
+    { n = 1, place = 2753915549, name = "First Sea" },
+    { n = 2, place = 4442272183, name = "Second Sea" },
+    { n = 3, place = 7449423635, name = "Third Sea" },
+}
+
+local seaCooldown = 0
+
+local function currentSea()
+    for _, s in ipairs(SEAS) do
+        if game.PlaceId == s.place then return s end
+    end
+    return nil
+end
+
+local function goSea(n)
+    local target
+    for _, s in ipairs(SEAS) do
+        if s.n == n then target = s end
+    end
+    if not target then return end
+
+    if os.clock() < seaCooldown then
+        setStatus("mer : cooldown 8s")
+        return
+    end
+
+    if game.PlaceId == target.place then
+        setStatus("déjà en " .. target.name)
+        return
+    end
+
+    seaCooldown = os.clock() + 8
+    setStatus("→ " .. target.name)
+
+    local ok = pcall(function()
+        TeleportService:Teleport(target.place, LocalPlayer)
+    end)
+    if not ok then
+        setStatus(target.name .. " refusée")
+    end
+end
+
+-- ══════════════════════════════════════════════════════════════
 --  FARM
 -- ══════════════════════════════════════════════════════════════
 local Webhook = {}   -- rempli par le module webhook, plus bas
@@ -2171,6 +2217,15 @@ end)
 makeSlider(tpPage, "Délai entre pas (ms)", 8, 200, math.floor(CONFIG.Waypoint.stepDelay * 1000), function(v)
     CONFIG.Waypoint.stepDelay = v / 1000
 end)
+
+makeSectionLabel(tpPage, "Mers")
+
+local here = currentSea()
+makeInfo(tpPage, "mer actuelle : " .. (here and here.name or ("place " .. game.PlaceId)))
+
+makeButton(tpPage, "Aller en Sea 1  (First Sea)", function() goSea(1) end)
+makeButton(tpPage, "Aller en Sea 2  (Second Sea)", function() goSea(2) end)
+makeButton(tpPage, "Aller en Sea 3  (Third Sea)", function() goSea(3) end)
 
 makeSectionLabel(tpPage, "Raccourcis")
 

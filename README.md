@@ -77,6 +77,12 @@ Web ; elle est visible par quiconque lit le script.
 Téléportation par micro-pas (taille et délai réglables), raccourcis fruit /
 coffre / dealer, WalkSpeed, JumpPower, anti-void.
 
+Boutons **Sea 1 / Sea 2 / Sea 3** dans l'onglet TP : chaque mer est une place
+Roblox séparée (`2753915549`, `4442272183`, `7449423635`), le bouton téléporte
+directement dessus, avec cooldown de 8 s et détection de la mer actuelle.
+L'accès reste verrouillé côté serveur : une mer non débloquée te renvoie en
+arrière, ce n'est pas le bouton qui décide.
+
 ### Protection
 
 Anti-kick (`__namecall`), spoof `WalkSpeed` / `JumpPower` (`__index`), anti-AFK,
