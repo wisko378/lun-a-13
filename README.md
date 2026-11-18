@@ -31,16 +31,34 @@ Solara, Fluxus, Xeno.
 3. `FARM` dans le header lance / coupe la boucle, `T` téléporte au fruit le plus
    proche.
 
-### Whitelist
+### Whitelist — l'ID passe par le lien
 
-Le script refuse de s'exécuter si le `UserId` du joueur n'est pas dans la table
-`WHITELIST` en haut de `bloxfruits/rfx_v2.lua`.
+Deux fichiers :
+
+- `bloxfruits/loader.lua` — le petit loader à coller dans l'exécuteur. Il
+  construit l'URL avec l'ID (`.../rfx_v2.lua?id=12020224798`) et le transmet en
+  argument du chunk.
+- `bloxfruits/rfx_v2.lua` — le script. Il refuse de s'exécuter si l'ID reçu ne
+  remplit pas les deux conditions :
+
+1. il figure dans `WHITELIST` ;
+2. il est égal à `LocalPlayer.UserId` du compte qui exécute.
 
 ```lua
 local WHITELIST = {
     [12020224798] = true,
 }
+
+local LINK_ID = tonumber((...))
+
+if not LINK_ID or not WHITELIST[LINK_ID] or LINK_ID ~= LocalPlayer.UserId then
+    print("[RFX] accès refusé")
+    return
+end
 ```
+
+Donc : ton compte lance le loader avec ton ID → ça tourne. Un autre compte
+lance le même fichier → l'ID du lien ne correspond pas à son `UserId`, refusé.
 
 Pour autoriser un autre compte, ajouter son `UserId` (nombre, pas le pseudo) :
 
@@ -51,8 +69,8 @@ local WHITELIST = {
 }
 ```
 
-Un ID absent de la table : le script affiche `[RFX] accès refusé` et s'arrête
-avant de créer la moindre interface ou d'installer un hook.
+Un refus affiche `[RFX] accès refusé` et s'arrête avant la moindre interface ou
+le moindre hook.
 
 ### Notes
 

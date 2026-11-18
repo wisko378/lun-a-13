@@ -30,14 +30,30 @@ local LocalPlayer = Players.LocalPlayer
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
 
 -- ══════════════════════════════════════════════════════════════
---  WHITELIST — seuls ces UserIds exécutent le script
---  Un ID absent de la table : rien ne se lance (pas de GUI, pas de hook).
+--  WHITELIST — l'ID passe par le lien, le script le vérifie
+--
+--  Le loader fait :  loadstring(game:HttpGet(URL .. "?id=" .. ID))(ID)
+--  L'ID reçu doit :
+--    1. être dans la table WHITELIST
+--    2. correspondre au compte qui exécute le script (LocalPlayer.UserId)
+--  Sinon : rien ne se lance, ni GUI ni hook.
 -- ══════════════════════════════════════════════════════════════
 local WHITELIST = {
-    [12020224798] = true,
+    [12020224798] = true,   -- compte autorisé
 }
 
-if not WHITELIST[LocalPlayer.UserId] then
+-- ID transmis en argument du chunk par le loader
+local LINK_ID = tonumber((...))
+
+-- secours : loader qui passe l'ID par getgenv() au lieu d'un argument
+if not LINK_ID and type(getgenv) == "function" then
+    local ok, env = pcall(getgenv)
+    if ok and type(env) == "table" then
+        LINK_ID = tonumber(env.RFX_LINK_ID)
+    end
+end
+
+if not LINK_ID or not WHITELIST[LINK_ID] or LINK_ID ~= LocalPlayer.UserId then
     print("[RFX] accès refusé")
     return
 end
