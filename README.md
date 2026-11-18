@@ -111,7 +111,22 @@ Onglet TP → section **Îles** : champ de nom + **TP sur l'île** (recherche
 partielle dans `_WorldOrigin.Locations`), raccourci **TP usine (Factory)** et
 **Lister les îles** pour voir les noms réels de ta mer.
 
+### Boutique, mastery, farm mob, quêtes
+
+Onglet Combat, sous la section Raid :
+
+- **Boutique** — `BuyHaki` pour Buso / Geppo / Soru, et `BuyItem` avec un champ
+  libre (Katana, Bisento, Musket…). Le serveur vérifie le Beli, comme toujours.
+- **Farm mastery** — champ arme + toggle : équipe l'arme demandée et tape
+  l'ennemi le plus proche au rythme `attackRate`, ce qui monte la maîtrise.
+- **Farm mob / matériau** — champ île + champ mob : TP sur l'île toutes les 6 s
+  (via `_WorldOrigin.Locations`) puis tue le mob nommé. C'est la brique
+  « usine / Factory Staff » réutilisable pour n'importe quel matériau.
+- **Quêtes** — `CurrentQuest` (diagnostic), `EndQuest` (valider),
+  `AbandonQuest` (jeter la quête en cours).
+
 ### Webhook
+
 
 
 Notifications Discord depuis l'onglet Web : fruits ramassés, résumé du farm,

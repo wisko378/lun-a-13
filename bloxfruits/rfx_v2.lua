@@ -1932,6 +1932,79 @@ task.spawn(function()
 end)
 
 -- ══════════════════════════════════════════════════════════════
+--  BOUTIQUE — haki et objets du marchand
+-- ══════════════════════════════════════════════════════════════
+local Shop = {}
+
+function Shop.haki(name)
+    Remotes.invoke("BuyHaki", name)
+    setStatus("haki → " .. name)
+end
+
+function Shop.item(name)
+    if not name or name == "" then
+        setStatus("boutique : nom vide")
+        return
+    end
+    Remotes.invoke("BuyItem", name)
+    setStatus("achat → " .. name)
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  MASTERY — monte une arme en équipant et en tapant
+-- ══════════════════════════════════════════════════════════════
+local Mastery = { active = false, tool = "" }
+
+task.spawn(function()
+    while true do
+        task.wait(math.max(0.05, CONFIG.Combat.attackRate))
+        if Mastery.active then
+            if Mastery.tool ~= "" then Melee.equip(Mastery.tool) end
+            Combat.hit(Combat.nearest(nil, 0))
+        end
+    end
+end)
+
+-- ══════════════════════════════════════════════════════════════
+--  FARM MOB — tp sur une île puis tue le mob demandé
+-- ══════════════════════════════════════════════════════════════
+local MobFarm = { active = false, island = "", mob = "" }
+
+task.spawn(function()
+    local lastTp = 0
+    while true do
+        task.wait(0.35)
+        if MobFarm.active then
+            if MobFarm.island ~= "" and os.clock() - lastTp > 6 then
+                Islands.tp(MobFarm.island)
+                lastTp = os.clock()
+            end
+            Combat.equip()
+            Combat.hit(Combat.nearest(MobFarm.mob, 0))
+        end
+    end
+end)
+
+-- ══════════════════════════════════════════════════════════════
+--  QUÊTES — diagnostic, fin, abandon
+-- ══════════════════════════════════════════════════════════════
+local QuestTools = {}
+
+function QuestTools.current()
+    setStatus("quête : " .. tostring(Remotes.invoke("CurrentQuest")))
+end
+
+function QuestTools.endQuest()
+    Remotes.invoke("EndQuest")
+    setStatus("quête terminée")
+end
+
+function QuestTools.abandon()
+    Remotes.invoke("AbandonQuest")
+    setStatus("quête abandonnée")
+end
+
+-- ══════════════════════════════════════════════════════════════
 --  UI
 -- ══════════════════════════════════════════════════════════════
 local UI = {
@@ -2900,6 +2973,105 @@ makeButton(combatPage, "Lister les chips", function()
     setStatus("chip choisi : " .. list[1] .. " (" .. #list .. " dispo)")
 end, 28)
 
+makeSectionLabel(combatPage, "Boutique")
+
+makeButton(combatPage, "Acheter Buso (Haki)", function() Shop.haki("Buso") end, 28)
+makeButton(combatPage, "Acheter Geppo", function() Shop.haki("Geppo") end, 28)
+makeButton(combatPage, "Acheter Soru", function() Shop.haki("Soru") end, 28)
+
+local itemBox = new("TextBox", {
+    Size = UDim2.new(1, 0, 0, 30),
+    BackgroundColor3 = C.row,
+    BorderSizePixel = 0,
+    Text = "",
+    PlaceholderText = "objet du marchand (ex: Katana)",
+    TextColor3 = C.text,
+    PlaceholderColor3 = C.sub,
+    Font = Enum.Font.Gotham,
+    TextSize = 11,
+    ClearTextOnFocus = false,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, combatPage)
+corner(itemBox, 6)
+new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, itemBox)
+
+makeButton(combatPage, "Acheter l'objet", function()
+    Shop.item(itemBox.Text)
+end, 30)
+
+makeSectionLabel(combatPage, "Mastery")
+
+local toolBox = new("TextBox", {
+    Size = UDim2.new(1, 0, 0, 30),
+    BackgroundColor3 = C.row,
+    BorderSizePixel = 0,
+    Text = "",
+    PlaceholderText = "arme à monter (ex: Superhuman)",
+    TextColor3 = C.text,
+    PlaceholderColor3 = C.sub,
+    Font = Enum.Font.Gotham,
+    TextSize = 11,
+    ClearTextOnFocus = false,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, combatPage)
+corner(toolBox, 6)
+new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, toolBox)
+
+toolBox.FocusLost:Connect(function()
+    Mastery.tool = toolBox.Text
+end)
+
+makeToggle(combatPage, "Farm mastery", false, function(v)
+    Mastery.tool = toolBox.Text
+    Mastery.active = v
+end)
+
+makeSectionLabel(combatPage, "Farm mob / matériau")
+
+local mobIslandBox = new("TextBox", {
+    Size = UDim2.new(1, 0, 0, 30),
+    BackgroundColor3 = C.row,
+    BorderSizePixel = 0,
+    Text = "",
+    PlaceholderText = "île (ex: Factory)",
+    TextColor3 = C.text,
+    PlaceholderColor3 = C.sub,
+    Font = Enum.Font.Gotham,
+    TextSize = 11,
+    ClearTextOnFocus = false,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, combatPage)
+corner(mobIslandBox, 6)
+new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, mobIslandBox)
+
+local mobBox = new("TextBox", {
+    Size = UDim2.new(1, 0, 0, 30),
+    BackgroundColor3 = C.row,
+    BorderSizePixel = 0,
+    Text = "",
+    PlaceholderText = "mob (ex: Factory Staff)",
+    TextColor3 = C.text,
+    PlaceholderColor3 = C.sub,
+    Font = Enum.Font.Gotham,
+    TextSize = 11,
+    ClearTextOnFocus = false,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, combatPage)
+corner(mobBox, 6)
+new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, mobBox)
+
+makeToggle(combatPage, "Farm mob", false, function(v)
+    MobFarm.island = mobIslandBox.Text
+    MobFarm.mob = mobBox.Text
+    MobFarm.active = v
+end)
+
+makeSectionLabel(combatPage, "Quêtes")
+
+makeButton(combatPage, "Quête en cours", function() QuestTools.current() end, 28)
+makeButton(combatPage, "Terminer la quête", function() QuestTools.endQuest() end, 28)
+makeButton(combatPage, "Abandonner la quête", function() QuestTools.abandon() end, 28)
+
 ---------------------------------------------------------------
 --  WEBHOOK PAGE
 ---------------------------------------------------------------
@@ -3128,6 +3300,8 @@ _G.RFX_Unload = function()
     Combat.fastAttack = false
     Melee.auto = false
     Raid.auto = false
+    Mastery.active = false
+    MobFarm.active = false
     CONFIG.Raid.auto = false
     CONFIG.Stats.active = false
     CONFIG.Protect.antiKick = false
