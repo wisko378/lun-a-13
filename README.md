@@ -46,6 +46,25 @@ Points disponibles lus dans `LocalPlayer.Data.Points.Value`, niveaux lus dans
 `LocalPlayer.Data.Stats.<Stat>.Level.Value`. Priorité configurable par toggle,
 points par tick réglables, bouton « dépenser tout maintenant ».
 
+### Combat — farm level et boss
+
+- **Auto farm level** : accepte la quête (`CommF_:InvokeServer("StartQuest", <clé>,
+  <niveau>)`), TP sur le mob demandé dans `workspace.Enemies`, frappe, enchaîne.
+  Table de paliers intégrée (Bandit → Dark Master, niveaux 1 à 249). Au-delà, le
+  module s'arrête proprement avec `palier inconnu` au lieu d'inventer une clé.
+- **Auto farm boss** : nom optionnel (vide = les ennemis les plus costauds,
+  seuil `HP minimum` réglable), TP + frappe en boucle.
+- **Attaque rapide (no CD)** : boucle d'attaque sans délai de clic,
+  `Tool:Activate()` + `ClickButton1` + `CommF_ "Attack"` en secours.
+- **Auto équiper une arme** depuis le sac si la main est vide.
+
+### Webhook
+
+Notifications Discord depuis l'onglet Web : fruits ramassés, résumé du farm,
+message de test. POST JSON avec `request` / `http_request` / `syn.request` /
+`game:HttpPost` selon ce que l'exécuteur expose. L'URL se colle dans l'onglet
+Web ; elle est visible par quiconque lit le script.
+
 ### TP / mouvement
 
 Téléportation par micro-pas (taille et délai réglables), raccourcis fruit /

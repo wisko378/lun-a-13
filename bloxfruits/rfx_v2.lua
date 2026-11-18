@@ -119,6 +119,17 @@ local CONFIG = {
         pickupRetry  = 3,
         collectDelay = 0.8,
     },
+    Combat = {
+        bossName      = "",
+        bossMinHealth = 1500,
+        attackRate    = 0.12,
+        autoEquip     = true,
+    },
+    Webhook = {
+        url          = "",
+        notifyFruits = true,
+        notifyStats  = false,
+    },
     Stats = {
         active       = false,
         pointsPerTick= 1,
@@ -141,6 +152,23 @@ local TARGET_CYCLE = {
 }
 
 local STAT_LIST = { "Melee", "Defense", "Sword", "Gun", "Demon Fruit" }
+
+-- Paliers de quête connus (clé + niveau renvoyés à CommF_ StartQuest).
+-- Au-delà, le farm level s'arrête proprement au lieu d'inventer une clé.
+local QUESTS = {
+    { from = 1,   to = 9,   mob = "Bandit",              quest = "BanditQuest1", qlvl = 1 },
+    { from = 10,  to = 14,  mob = "Monkey",              quest = "JungleQuest",  qlvl = 1 },
+    { from = 15,  to = 29,  mob = "Gorilla",             quest = "JungleQuest",  qlvl = 2 },
+    { from = 30,  to = 39,  mob = "Pirate",              quest = "BuggyQuest1",  qlvl = 1 },
+    { from = 40,  to = 59,  mob = "Brute",               quest = "BuggyQuest1",  qlvl = 2 },
+    { from = 60,  to = 74,  mob = "Desert Bandit",       quest = "DesertQuest",  qlvl = 1 },
+    { from = 75,  to = 89,  mob = "Desert Officer",      quest = "DesertQuest",  qlvl = 2 },
+    { from = 90,  to = 119, mob = "Snow Bandit",         quest = "SnowQuest",    qlvl = 1 },
+    { from = 120, to = 149, mob = "Snowman",             quest = "SnowQuest",    qlvl = 2 },
+    { from = 150, to = 174, mob = "Chief Petty Officer", quest = "MarineQuest2", qlvl = 1 },
+    { from = 175, to = 209, mob = "Sky Bandit",          quest = "SkyQuest",     qlvl = 1 },
+    { from = 210, to = 249, mob = "Dark Master",         quest = "SkyQuest",     qlvl = 2 },
+}
 
 -- ══════════════════════════════════════════════════════════════
 --  UTILS
@@ -963,6 +991,8 @@ end)
 -- ══════════════════════════════════════════════════════════════
 --  FARM
 -- ══════════════════════════════════════════════════════════════
+local Webhook = {}   -- rempli par le module webhook, plus bas
+
 local Farm = {
     active = false,
     token  = 0,
@@ -1030,6 +1060,15 @@ function Farm.start()
                     if farmOne(inst, pos) then
                         Farm.stats.collected = Farm.stats.collected + 1
                         setStatus("ramassé " .. inst.Name)
+                        if CONFIG.Webhook.notifyFruits then
+                            pcall(function()
+                                Webhook.send(
+                                    "Fruit ramassé",
+                                    inst.Name .. " • " .. LocalPlayer.Name,
+                                    15844367
+                                )
+                            end)
+                        end
                     else
                         ESP.cooldown[inst] = os.clock() + 12
                         setStatus("échec pickup — cooldown")
@@ -1119,6 +1158,280 @@ task.spawn(function()
         end
     end
 end)
+
+-- ══════════════════════════════════════════════════════════════
+--  COMBAT — cibles, équipement, coups
+-- ══════════════════════════════════════════════════════════════
+local Combat = { fastAttack = false }
+
+local function enemiesFolder()
+    return workspace:FindFirstChild("Enemies")
+end
+
+function Combat.enemies(filter)
+    local list = {}
+    local folder = enemiesFolder()
+    if not folder then return list end
+
+    for _, e in ipairs(folder:GetChildren()) do
+        local hum = e:FindFirstChildOfClass("Humanoid")
+        local root = e:FindFirstChild("HumanoidRootPart")
+        if hum and root and hum.Health > 0 then
+            if not filter or filter(e, hum) then
+                list[#list + 1] = e
+            end
+        end
+    end
+    return list
+end
+
+function Combat.nearest(name, minHealth)
+    local hrp = getHRP()
+    if not hrp then return nil end
+
+    local needle = (name and #name > 0) and name:lower() or nil
+
+    local best, bestDist
+    for _, e in ipairs(Combat.enemies(function(inst, hum)
+        if needle and not inst.Name:lower():find(needle, 1, true) then
+            return false
+        end
+        if minHealth and hum.MaxHealth < minHealth then return false end
+        return true
+    end)) do
+        local root = e:FindFirstChild("HumanoidRootPart")
+        if root then
+            local d = (root.Position - hrp.Position).Magnitude
+            if not bestDist or d < bestDist then
+                best, bestDist = e, d
+            end
+        end
+    end
+    return best
+end
+
+function Combat.equip()
+    if not CONFIG.Combat.autoEquip then return end
+
+    local char = getChar()
+    if not char then return end
+    if char:FindFirstChildOfClass("Tool") then return end
+
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not backpack or not hum then return end
+
+    for _, tool in ipairs(backpack:GetChildren()) do
+        if tool:IsA("Tool") then
+            pcall(function() hum:EquipTool(tool) end)
+            return
+        end
+    end
+end
+
+function Combat.hit(target)
+    local char = getChar()
+    if not char then return end
+
+    local tool = char:FindFirstChildOfClass("Tool")
+    if tool then pcall(function() tool:Activate() end) end
+
+    pcall(function()
+        local vim = game:GetService("VirtualUser")
+        vim:CaptureController()
+        vim:ClickButton1(Vector2.new(0, 0))
+    end)
+
+    local remote = Remotes.get()
+    if remote and target then
+        pcall(function() remote:InvokeServer("Attack", target) end)
+    end
+end
+
+task.spawn(function()
+    while true do
+        task.wait(math.max(0.03, CONFIG.Combat.attackRate))
+        if Combat.fastAttack then
+            Combat.equip()
+            Combat.hit()
+        end
+    end
+end)
+
+-- ══════════════════════════════════════════════════════════════
+--  AUTO FARM LEVEL — quête + mobs
+-- ══════════════════════════════════════════════════════════════
+local FarmLevel = { active = false, token = 0 }
+
+local function playerLevel()
+    local data = playerData()
+    if not data then return 0 end
+    local ok, lvl = pcall(function()
+        local l = data:FindFirstChild("Level")
+        return l and l.Value or 0
+    end)
+    if ok and type(lvl) == "number" then return lvl end
+    return 0
+end
+
+local function hasQuest()
+    local ok, visible = pcall(function()
+        local main = LocalPlayer.PlayerGui:FindFirstChild("Main")
+        local quest = main and main:FindFirstChild("Quest")
+        return quest and quest.Visible or false
+    end)
+    return ok and visible == true
+end
+
+function FarmLevel.entryFor(level)
+    for _, q in ipairs(QUESTS) do
+        if level >= q.from and level <= q.to then return q end
+    end
+    return nil
+end
+
+function FarmLevel.start()
+    if FarmLevel.active then return true end
+    FarmLevel.active = true
+    FarmLevel.token = FarmLevel.token + 1
+    local myToken = FarmLevel.token
+
+    task.spawn(function()
+        task.wait(1)
+
+        while FarmLevel.active and FarmLevel.token == myToken do
+            local level = playerLevel()
+            local q = FarmLevel.entryFor(level)
+
+            if not q then
+                setStatus("farm level : palier inconnu (lv " .. level .. ")")
+                task.wait(2)
+            else
+                if not hasQuest() then
+                    setStatus("farm level : quête " .. q.quest)
+                    Remotes.invoke("StartQuest", q.quest, q.qlvl)
+                    task.wait(0.8)
+                end
+
+                local enemy = Combat.nearest(q.mob)
+                if enemy then
+                    local root = enemy:FindFirstChild("HumanoidRootPart")
+                    if root then
+                        Movement.tp(root.Position)
+                        task.wait(0.12)
+                        Combat.equip()
+                        Combat.hit(enemy)
+                    end
+                else
+                    setStatus("farm level : aucun " .. q.mob .. " — attente")
+                    task.wait(1.5)
+                end
+            end
+
+            task.wait(0.1)
+        end
+    end)
+
+    return true
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  AUTO FARM BOSS
+-- ══════════════════════════════════════════════════════════════
+local FarmBoss = { active = false, token = 0 }
+
+function FarmBoss.start()
+    if FarmBoss.active then return true end
+    FarmBoss.active = true
+    FarmBoss.token = FarmBoss.token + 1
+    local myToken = FarmBoss.token
+
+    task.spawn(function()
+        task.wait(1)
+
+        while FarmBoss.active and FarmBoss.token == myToken do
+            local boss = Combat.nearest(CONFIG.Combat.bossName, CONFIG.Combat.bossMinHealth)
+
+            if boss then
+                local root = boss:FindFirstChild("HumanoidRootPart")
+                local hum = boss:FindFirstChildOfClass("Humanoid")
+                if root and hum then
+                    setStatus(string.format("boss %s — %d hp", boss.Name, math.floor(hum.Health)))
+                    Movement.tp(root.Position)
+                    task.wait(0.12)
+                    Combat.equip()
+                    Combat.hit(boss)
+                end
+            else
+                setStatus("boss introuvable — attente")
+                task.wait(2)
+            end
+
+            task.wait(0.1)
+        end
+    end)
+
+    return true
+end
+
+-- ══════════════════════════════════════════════════════════════
+--  WEBHOOK — notifications Discord
+-- ══════════════════════════════════════════════════════════════
+Webhook = Webhook or {}
+
+local function httpPost(url, body)
+    local fn
+    if type(request) == "function" then
+        fn = function()
+            return request({
+                Url = url, Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = body,
+            })
+        end
+    elseif type(http_request) == "function" then
+        fn = function()
+            return http_request({
+                Url = url, Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = body,
+            })
+        end
+    elseif syn and type(syn.request) == "function" then
+        fn = function()
+            return syn.request({
+                Url = url, Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = body,
+            })
+        end
+    elseif type(game.HttpPost) == "function" then
+        fn = function() return game:HttpPost(url, body) end
+    end
+
+    if not fn then return false end
+    local ok = pcall(fn)
+    return ok
+end
+
+function Webhook.send(title, description, color)
+    if CONFIG.Webhook.url == "" then return false end
+
+    local payload = {
+        username = "RFX",
+        embeds = { {
+            title = title,
+            description = description,
+            color = color or 3771456,
+            timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+        } },
+    }
+
+    local ok, body = pcall(function() return HttpService:JSONEncode(payload) end)
+    if not ok then return false end
+
+    return httpPost(CONFIG.Webhook.url, body)
+end
 
 -- ══════════════════════════════════════════════════════════════
 --  UI
@@ -1510,7 +1823,7 @@ UI.countLabel = countText
 ---------------------------------------------------------------
 local function createTab(name, order)
     local btn = new("TextButton", {
-        Size = UDim2.fromOffset(66, 30),
+        Size = UDim2.fromOffset(50, 30),
         BackgroundColor3 = C.panel,
         Text = name,
         TextColor3 = C.sub,
@@ -1558,6 +1871,8 @@ local tpPage    = createTab("TP", 3)
 local statsPage = createTab("Stats", 4)
 local protPage  = createTab("Protect", 5)
 local hopPage   = createTab("Hop", 6)
+local combatPage= createTab("Combat", 7)
+local webPage   = createTab("Web", 8)
 
 local function showTab(name)
     for n, t in pairs(UI.tabs) do
@@ -1610,14 +1925,16 @@ end
 
 farmBig.MouseButton1Click:Connect(toggleFarm)
 
-local modeBtn = makeButton(farmPage, "Mode : Fruits", function()
+local modeBtn
+modeBtn = makeButton(farmPage, "Mode : Fruits", function()
     CONFIG.Farm.mode = (CONFIG.Farm.mode == "Fruits") and "Chests" or "Fruits"
     modeBtn.Text = "Mode : " .. CONFIG.Farm.mode
     refreshFarmBig()
     setStatus("mode → " .. CONFIG.Farm.mode)
 end, 30)
 
-local targetBtn = makeButton(farmPage, "Cible : " .. CONFIG.Farm.target, function()
+local targetBtn
+targetBtn = makeButton(farmPage, "Cible : " .. CONFIG.Farm.target, function()
     local idx = 1
     for i, v in ipairs(TARGET_CYCLE) do
         if v == CONFIG.Farm.target then idx = i break end
@@ -1899,6 +2216,121 @@ linkBox.FocusLost:Connect(function()
 end)
 
 ---------------------------------------------------------------
+--  COMBAT PAGE
+---------------------------------------------------------------
+makeSectionLabel(combatPage, "Farm automatique")
+
+makeToggle(combatPage, "Auto farm level (quête + mobs)", false, function(v)
+    if v then
+        FarmLevel.start()
+        setStatus("farm level ON")
+    else
+        FarmLevel.active = false
+        setStatus("farm level OFF")
+    end
+end)
+
+makeToggle(combatPage, "Auto farm boss", false, function(v)
+    if v then
+        FarmBoss.start()
+        setStatus("farm boss ON")
+    else
+        FarmBoss.active = false
+        setStatus("farm boss OFF")
+    end
+end)
+
+local bossBox = new("TextBox", {
+    Size = UDim2.new(1, 0, 0, 32),
+    BackgroundColor3 = C.row,
+    BorderSizePixel = 0,
+    Text = CONFIG.Combat.bossName,
+    PlaceholderText = "nom du boss (vide = le plus costaud)",
+    TextColor3 = C.text,
+    PlaceholderColor3 = C.sub,
+    Font = Enum.Font.Gotham,
+    TextSize = 11,
+    ClearTextOnFocus = false,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, combatPage)
+corner(bossBox, 6)
+new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, bossBox)
+
+bossBox.FocusLost:Connect(function()
+    CONFIG.Combat.bossName = bossBox.Text
+    setStatus(#bossBox.Text > 0 and ("boss → " .. bossBox.Text) or "boss → auto")
+end)
+
+makeSlider(combatPage, "Boss — HP minimum", 200, 30000, CONFIG.Combat.bossMinHealth, function(v)
+    CONFIG.Combat.bossMinHealth = v
+end)
+
+makeSectionLabel(combatPage, "Combat")
+
+makeToggle(combatPage, "Attaque rapide (no CD)", false, function(v)
+    Combat.fastAttack = v
+end)
+
+makeSlider(combatPage, "Intervalle d'attaque (ms)", 40, 500, math.floor(CONFIG.Combat.attackRate * 1000), function(v)
+    CONFIG.Combat.attackRate = v / 1000
+end)
+
+makeToggle(combatPage, "Auto équiper une arme", CONFIG.Combat.autoEquip, function(v)
+    CONFIG.Combat.autoEquip = v
+end)
+
+---------------------------------------------------------------
+--  WEBHOOK PAGE
+---------------------------------------------------------------
+makeSectionLabel(webPage, "Discord webhook")
+
+local hookBox = new("TextBox", {
+    Size = UDim2.new(1, 0, 0, 32),
+    BackgroundColor3 = C.row,
+    BorderSizePixel = 0,
+    Text = CONFIG.Webhook.url,
+    PlaceholderText = "https://discord.com/api/webhooks/…",
+    TextColor3 = C.text,
+    PlaceholderColor3 = C.sub,
+    Font = Enum.Font.Gotham,
+    TextSize = 11,
+    ClearTextOnFocus = false,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, webPage)
+corner(hookBox, 6)
+new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, hookBox)
+
+hookBox.FocusLost:Connect(function()
+    CONFIG.Webhook.url = hookBox.Text
+    setStatus(CONFIG.Webhook.url ~= "" and "webhook enregistré" or "webhook vidé")
+end)
+
+makeToggle(webPage, "Notifier les fruits", CONFIG.Webhook.notifyFruits, function(v)
+    CONFIG.Webhook.notifyFruits = v
+end)
+
+makeToggle(webPage, "Notifier les points de stat", CONFIG.Webhook.notifyStats, function(v)
+    CONFIG.Webhook.notifyStats = v
+end)
+
+makeButton(webPage, "Envoyer un test", function()
+    local ok = Webhook.send("RFX — test", "Le webhook répond. Script chargé sur " .. LocalPlayer.Name, 3771456)
+    setStatus(ok and "webhook : envoyé" or "webhook : échec")
+end)
+
+makeButton(webPage, "Envoyer le résumé du farm", function()
+    local ok = Webhook.send(
+        "RFX — résumé",
+        string.format("vu %d • ramassé %d • stocké %d • hop %d",
+            Farm.stats.seen, Farm.stats.collected, Farm.stats.stored, Farm.stats.hops),
+        3771456
+    )
+    setStatus(ok and "webhook : résumé envoyé" or "webhook : échec")
+end)
+
+makeInfo(webPage, "l'URL du webhook est visible par qui lit le script", 32)
+
+---------------------------------------------------------------
 --  DRAG / MINIMIZE
 ---------------------------------------------------------------
 local dragging = false
@@ -2070,6 +2502,9 @@ end)
 -- ══════════════════════════════════════════════════════════════
 _G.RFX_Unload = function()
     Farm.stop()
+    FarmLevel.active = false
+    FarmBoss.active = false
+    Combat.fastAttack = false
     CONFIG.Stats.active = false
     CONFIG.Protect.antiKick = false
     CONFIG.Protect.spoofHumanoid = false
