@@ -31,6 +31,29 @@ Solara, Fluxus, Xeno.
 3. `FARM` dans le header lance / coupe la boucle, `T` téléporte au fruit le plus
    proche.
 
+### Whitelist
+
+Le script refuse de s'exécuter si le `UserId` du joueur n'est pas dans la table
+`WHITELIST` en haut de `bloxfruits/rfx_v2.lua`.
+
+```lua
+local WHITELIST = {
+    [12020224798] = true,
+}
+```
+
+Pour autoriser un autre compte, ajouter son `UserId` (nombre, pas le pseudo) :
+
+```lua
+local WHITELIST = {
+    [12020224798] = true,
+    [1234567890] = true,
+}
+```
+
+Un ID absent de la table : le script affiche `[RFX] accès refusé` et s'arrête
+avant de créer la moindre interface ou d'installer un hook.
+
 ### Notes
 
 - L'auto-store dépend de `CommF_`. Si le remote n'existe pas, l'onglet Bypass

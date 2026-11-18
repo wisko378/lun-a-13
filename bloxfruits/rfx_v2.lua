@@ -29,6 +29,19 @@ local VirtualUser      = game:GetService("VirtualUser")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
 
+-- ══════════════════════════════════════════════════════════════
+--  WHITELIST — seuls ces UserIds exécutent le script
+--  Un ID absent de la table : rien ne se lance (pas de GUI, pas de hook).
+-- ══════════════════════════════════════════════════════════════
+local WHITELIST = {
+    [12020224798] = true,
+}
+
+if not WHITELIST[LocalPlayer.UserId] then
+    print("[RFX] accès refusé")
+    return
+end
+
 math.randomseed(os.clock() * 1e6)
 
 -- ══════════════════════════════════════════════════════════════
