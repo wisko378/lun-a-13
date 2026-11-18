@@ -51,4 +51,13 @@ if not chunk then
 end
 
 -- l'ID part en argument du chunk : le script le compare à UserId
-chunk(ROBLOX_ID)
+-- l'URL part en 2e argument : elle sert au bouton « auto-exécute »
+-- (queue_on_teleport recharge le script après hop / changement de mer)
+if type(getgenv) == "function" then
+    pcall(function()
+        getgenv().RFX_URL = BASE_URL
+        getgenv().RFX_LINK_ID = ROBLOX_ID
+    end)
+end
+
+chunk(ROBLOX_ID, BASE_URL)

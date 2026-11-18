@@ -65,6 +65,19 @@ points par tick réglables, bouton « dépenser tout maintenant ».
   `Tool:Activate()` + `ClickButton1` + `CommF_ "Attack"` en secours.
 - **Auto équiper une arme** depuis le sac si la main est vide.
 
+### Auto-exécute
+
+Onglet Hop → « Se recharger après téléport ». Le script se remet en file via
+`queue_on_teleport` (ou `syn.queue_on_teleport`, `queueteleport`) : après un hop
+ou un changement de mer, il se relance tout seul, whitelist comprise.
+
+Le loader transmet son URL en deuxième argument (`chunk(ID, URL)`) ; c'est elle
+qui est rechargée. Un script collé à la main n'a pas d'URL → le bouton répond
+`auto-exec : URL inconnue (passe par le loader)`.
+
+L'état est mémorisé dans `getgenv().RFX_AUTOEXEC`, donc une ré-exécution
+ré-arme automatiquement la file.
+
 ### Webhook
 
 Notifications Discord depuis l'onglet Web : fruits ramassés, résumé du farm,

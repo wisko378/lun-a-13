@@ -43,7 +43,8 @@ local WHITELIST = {
     [12020224798] = true,
 }
 
-local LINK_ID = tonumber((...))
+local ARG_ID, ARG_URL = ...
+local LINK_ID = tonumber(ARG_ID)
 
 if not LINK_ID and type(getgenv) == "function" then
     local ok, env = pcall(getgenv)
@@ -1113,6 +1114,75 @@ local function goSea(n)
     if not ok then
         setStatus(target.name .. " refusée")
     end
+end
+
+-- ═══════════════════════════════════════════════════════════════
+--  AUTO-EXECUTE — se recharger après chaque téléportation
+--  Le loader transmet l'URL du script en 2e argument, on la remet en
+--  file via queue_on_teleport : hop et changement de mer relancent tout.
+-- ═══════════════════════════════════════════════════════════════
+local AutoExec = { enabled = false }
+
+local function env()
+    if type(getgenv) == "function" then
+        local ok, e = pcall(getgenv)
+        if ok and type(e) == "table" then return e end
+    end
+    return _G
+end
+
+local function selfUrl()
+    if ARG_URL and ARG_URL ~= "" then return ARG_URL end
+    local e = env()
+    if type(e.RFX_URL) == "string" and e.RFX_URL ~= "" then return e.RFX_URL end
+    return nil
+end
+
+function AutoExec.arm()
+    local url = selfUrl()
+    if not url then
+        setStatus("auto-exec : URL inconnue (passe par le loader)")
+        return false
+    end
+
+    local fn
+    if type(queue_on_teleport) == "function" then
+        fn = queue_on_teleport
+    elseif syn and type(syn.queue_on_teleport) == "function" then
+        fn = syn.queue_on_teleport
+    elseif type(queueteleport) == "function" then
+        fn = queueteleport
+    end
+
+    if not fn then
+        setStatus("auto-exec : executor sans queue_on_teleport")
+        return false
+    end
+
+    local id = tostring(LINK_ID or "")
+    local src = string.format(
+        "loadstring(game:HttpGet(%q))(%q, %q)",
+        url .. "?id=" .. id, id, url
+    )
+
+    local ok = pcall(fn, src)
+    setStatus(ok and "auto-exec : armé" or "auto-exec : refusé")
+    return ok
+end
+
+function AutoExec.set(state)
+    AutoExec.enabled = state
+
+    local e = env()
+    e.RFX_AUTOEXEC = state
+    if selfUrl() then e.RFX_URL = selfUrl() end
+
+    if state then AutoExec.arm() end
+end
+
+if env().RFX_AUTOEXEC then
+    AutoExec.enabled = true
+    task.defer(AutoExec.arm)
 end
 
 -- ══════════════════════════════════════════════════════════════
@@ -2368,6 +2438,18 @@ makeSlider(hopPage, "Joueurs max par serveur", 1, 30, CONFIG.Hop.maxPlayers, fun
 end)
 
 makeButton(hopPage, "Hop maintenant", function() Hop.execute(false) end)
+
+makeSectionLabel(hopPage, "Auto-exécute")
+
+makeToggle(hopPage, "Se recharger après téléport", AutoExec.enabled, function(v)
+    AutoExec.set(v)
+end)
+
+makeButton(hopPage, "Armer maintenant", function()
+    AutoExec.arm()
+end)
+
+makeInfo(hopPage, "URL du script : " .. (selfUrl() and "connue" or "inconnue"), 18)
 makeButton(hopPage, "Hop solo (le moins peuplé)", function() Hop.execute(true) end)
 
 local linkBox = new("TextBox", {
