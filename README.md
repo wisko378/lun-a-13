@@ -2,82 +2,88 @@
 
 Collection de scripts.
 
-## bloxfruits/rfx_v2.lua
+## bloxfruits/rfx_v2.lua — RFX v3
 
-Script unique (Luau) pour Blox Fruits : radar de fruits, farm automatique,
-téléportation, server hop et couche de protection client. Compatible Delta,
-Solara, Fluxus, Xeno.
+Script unique (Luau) pour Blox Fruits : ESP multi-catégories, farm fruits et
+coffres, auto-stats, téléportation, server hop et protection client.
+Compatible Delta, Solara, Fluxus, Xeno.
 
-### Ce qu'il fait
+### ESP — 6 catégories indépendantes
 
-- **Farm FRUIT** : boucle `chercher → TP micro-pas → pickup → store → hop`.
-  Bouton principal en haut du panneau et dans le header.
-- **Radar** : ESP des fruits au sol (`Highlight` + facteur de distance),
-  coloré par rareté.
-- **TP** : téléportation par micro-pas, taille du pas et délai réglables.
-- **Store** : stockage automatique des fruits du sac via
-  `ReplicatedStorage.Remotes.CommF_` (`StoreFruit`), avec plusieurs
-  signatures tentées en fallback.
-- **Hop** : sélection de serveur par population, mode solo (serveur le moins
-  peuplé ou lien de serveur privé), auto-hop quand la map est vide.
-- **Bypass** : anti-kick (`__namecall`), spoof `WalkSpeed` / `JumpPower`
-  (`__index`), anti-AFK, anti-void, diagnostic des fonctions de l'executor.
+| Catégorie | Détection | Couleur |
+|---|---|---|
+| Fruits | nom du fruit (`Dragon`, `Dragon-Dragon`, `… Fruit`) + rareté | par rareté |
+| Coffres | `Chest`, `Chest1`, `Chest2`, `Chest3` | gris / jaune / cyan |
+| Baies | nom contenant `berry` | rose |
+| Fleurs | nom contenant `flower` | violet |
+| Dealers / PNJ | nom contenant `dealer` | vert |
+| Joueurs | personnages des autres joueurs | orange |
 
-### Utilisation
+Un seul registre pour toutes les catégories : scan des enfants directs de
+`workspace` toutes les 3 s, `ChildAdded` / `ChildRemoved` en temps réel, mise à
+jour des labels à ~7 Hz avec seuil de distance (pas de re-render inutile).
 
-1. Copier `bloxfruits/rfx_v2.lua` dans l'éditeur de l'executor, ou l'héberger
-   et le charger avec `loadstring(game:HttpGet("<url>"))()`.
-2. Exécuter en jeu. Le panneau s'ouvre sur l'onglet Farm.
-3. `FARM` dans le header lance / coupe la boucle, `T` téléporte au fruit le plus
-   proche.
+### Farm
+
+- **Mode Fruits** : `chercher → TP micro-pas → touch/prompt → store → hop`.
+- **Mode Coffres** : même boucle, sans stockage.
+- Cible : `Any`, `Legendary+`, `Mythical` ou un fruit précis.
+- Auto-store via `CommF_:InvokeServer("StoreFruit", …)`, quatre signatures
+  tentées (avec Tool, sans Tool, nom brut, nom + Tool).
+- Cooldown par cible après un échec, pour éviter la boucle sur un objet fantôme.
+- Hop automatique quand la map est vide, mode solo (serveur le moins peuplé ou
+  lien de serveur privé).
+
+### Auto stats
+
+Allocation automatique des points de stat :
+
+```lua
+CommF_:InvokeServer("AddPoint", "Melee" | "Defense" | "Sword" | "Gun" | "Demon Fruit", points)
+```
+
+Points disponibles lus dans `LocalPlayer.Data.Points.Value`, niveaux lus dans
+`LocalPlayer.Data.Stats.<Stat>.Level.Value`. Priorité configurable par toggle,
+points par tick réglables, bouton « dépenser tout maintenant ».
+
+### TP / mouvement
+
+Téléportation par micro-pas (taille et délai réglables), raccourcis fruit /
+coffre / dealer, WalkSpeed, JumpPower, anti-void.
+
+### Protection
+
+Anti-kick (`__namecall`), spoof `WalkSpeed` / `JumpPower` (`__index`), anti-AFK,
+diagnostic des fonctions disponibles dans l'executor.
 
 ### Whitelist — l'ID passe par le lien
 
-Deux fichiers :
-
-- `bloxfruits/loader.lua` — le petit loader à coller dans l'exécuteur. Il
-  construit l'URL avec l'ID (`.../rfx_v2.lua?id=12020224798`) et le transmet en
-  argument du chunk.
-- `bloxfruits/rfx_v2.lua` — le script. Il refuse de s'exécuter si l'ID reçu ne
-  remplit pas les deux conditions :
-
-1. il figure dans `WHITELIST` ;
-2. il est égal à `LocalPlayer.UserId` du compte qui exécute.
+- `bloxfruits/loader.lua` construit l'URL avec l'ID
+  (`…/rfx_v2.lua?id=12020224798`) et le transmet en argument du chunk.
+- `rfx_v2.lua` refuse de s'exécuter si l'ID reçu n'est pas dans `WHITELIST`
+  **ou** ne correspond pas à `LocalPlayer.UserId`.
 
 ```lua
 local WHITELIST = {
     [12020224798] = true,
 }
-
-local LINK_ID = tonumber((...))
-
-if not LINK_ID or not WHITELIST[LINK_ID] or LINK_ID ~= LocalPlayer.UserId then
-    print("[RFX] accès refusé")
-    return
-end
 ```
 
-Donc : ton compte lance le loader avec ton ID → ça tourne. Un autre compte
-lance le même fichier → l'ID du lien ne correspond pas à son `UserId`, refusé.
+Un refus affiche `[RFX] accès refusé` et sort avant la moindre interface.
 
-Pour autoriser un autre compte, ajouter son `UserId` (nombre, pas le pseudo) :
+### Utilisation
 
-```lua
-local WHITELIST = {
-    [12020224798] = true,
-    [1234567890] = true,
-}
-```
-
-Un refus affiche `[RFX] accès refusé` et s'arrête avant la moindre interface ou
-le moindre hook.
+1. Coller `bloxfruits/loader.lua` dans l'exécuteur, ou charger l'URL avec
+   `loadstring` en passant l'ID.
+2. Le panneau s'ouvre sur l'onglet Farm. `FARM` dans le header lance / coupe la
+   boucle, `T` téléporte au fruit le plus proche.
 
 ### Notes
 
-- L'auto-store dépend de `CommF_`. Si le remote n'existe pas, l'onglet Bypass
-  affiche `absent` et le stockage ne tente rien.
-- Le vrai anti-cheat moteur (Byfron) est géré par l'executor, pas par le script.
-  Ce que le script contourne, c'est la couche jeu : kick, valeurs lues, distance
-  de téléportation, AFK.
-- Après une téléportation, le script doit être relancé sauf si l'auto-exécution
-  de l'executor est activée.
+- Les remotes dépendent de Blox Fruits : si `CommF_` disparaît, l'onglet
+  Protect affiche `absent` et les modules concernés restent muets.
+- L'anti-cheat moteur (Byfron) est géré par l'exécuteur, pas par le script.
+  Le script contourne la couche jeu : kick, valeurs lues, distance de
+  téléportation, AFK.
+- Après téléportation, le script doit être relancé sauf si l'auto-exécution de
+  l'exécuteur est activée.

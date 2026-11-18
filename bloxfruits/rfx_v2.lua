@@ -1,18 +1,22 @@
 --[[
 ╔══════════════════════════════════════════════════════════════════╗
-║  RFX v2 — Radar • Farm • Bypass • Hop                            ║
-║  Blox Fruits (farm fruits) + jeux à anti-cheat client            ║
+║  RFX v3 — Radar • Farm • Stats • Bypass • Hop                    ║
+║  Blox Fruits                                                     ║
 ║  Delta • Solara • Fluxus • Xeno (Luau)                           ║
 ╚══════════════════════════════════════════════════════════════════╝
 
-  Remotes utilisés (Blox Fruits) :
+  Remotes (Blox Fruits) :
     ReplicatedStorage.Remotes.CommF_
-      :InvokeServer("StoreFruit", <clé>, <tool>)   -- stockage
-      :InvokeServer("getInventoryFruits")           -- inventaire
-      :InvokeServer("GetFruits")                    -- shop
-  Pickup : firetouchinterest sur le Handle + ProximityPrompt.
-  Tout est en pcall : si un remote n'existe pas, le module se désactive
-  proprement au lieu de casser le script.
+      :InvokeServer("StoreFruit", <clé>, <tool>)
+      :InvokeServer("AddPoint", "Melee" | "Defense" | "Sword" | "Gun" | "Demon Fruit", points)
+
+  Données joueur :
+    LocalPlayer.Data.Points.Value                    -- points de stat disponibles
+    LocalPlayer.Data.Stats.<Stat>.Level.Value        -- niveau de chaque stat
+
+  Détection : enfants directs de workspace (fruits / coffres / baies / fleurs /
+  PNJ), plus les personnages des joueurs pour l'ESP joueur.
+  Tout passe par pcall : remote absent = module muet, pas d'erreur en cascade.
 --]]
 
 if _G.RFX_Unload then pcall(_G.RFX_Unload) end
@@ -32,20 +36,15 @@ local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
 -- ══════════════════════════════════════════════════════════════
 --  WHITELIST — l'ID passe par le lien, le script le vérifie
 --
---  Le loader fait :  loadstring(game:HttpGet(URL .. "?id=" .. ID))(ID)
---  L'ID reçu doit :
---    1. être dans la table WHITELIST
---    2. correspondre au compte qui exécute le script (LocalPlayer.UserId)
---  Sinon : rien ne se lance, ni GUI ni hook.
+--  Le loader fait : loadstring(game:HttpGet(URL .. "?id=" .. ID))(ID)
+--  L'ID reçu doit être dans WHITELIST ET être le compte qui exécute.
 -- ══════════════════════════════════════════════════════════════
 local WHITELIST = {
-    [12020224798] = true,   -- compte autorisé
+    [12020224798] = true,
 }
 
--- ID transmis en argument du chunk par le loader
 local LINK_ID = tonumber((...))
 
--- secours : loader qui passe l'ID par getgenv() au lieu d'un argument
 if not LINK_ID and type(getgenv) == "function" then
     local ok, env = pcall(getgenv)
     if ok and type(env) == "table" then
@@ -64,23 +63,29 @@ math.randomseed(os.clock() * 1e6)
 --  PALETTE / CONFIG
 -- ══════════════════════════════════════════════════════════════
 local C = {
-    accent = Color3.fromRGB(0, 220, 170),
-    accentDim = Color3.fromRGB(0, 120, 96),
-    bg     = Color3.fromRGB(13, 13, 17),
-    panel  = Color3.fromRGB(20, 20, 26),
-    row    = Color3.fromRGB(28, 28, 36),
-    rowHi  = Color3.fromRGB(38, 38, 48),
-    text   = Color3.fromRGB(232, 232, 240),
-    sub    = Color3.fromRGB(138, 138, 152),
-    danger = Color3.fromRGB(220, 80, 96),
-    gold   = Color3.fromRGB(255, 190, 70),
+    accent   = Color3.fromRGB(0, 220, 170),
+    accentDim= Color3.fromRGB(0, 110, 88),
+    bg       = Color3.fromRGB(13, 13, 17),
+    panel    = Color3.fromRGB(20, 20, 26),
+    row      = Color3.fromRGB(28, 28, 36),
+    rowHi    = Color3.fromRGB(40, 40, 50),
+    text     = Color3.fromRGB(232, 232, 240),
+    sub      = Color3.fromRGB(138, 138, 152),
+    danger   = Color3.fromRGB(220, 80, 96),
+    gold     = Color3.fromRGB(255, 190, 70),
+    chest1   = Color3.fromRGB(170, 170, 170),
+    chest2   = Color3.fromRGB(255, 220, 80),
+    chest3   = Color3.fromRGB(80, 230, 255),
+    berry    = Color3.fromRGB(230, 90, 140),
+    flower   = Color3.fromRGB(180, 140, 255),
+    dealer   = Color3.fromRGB(120, 220, 120),
+    player   = Color3.fromRGB(255, 130, 90),
 }
 
 local CONFIG = {
     Radar = {
-        enabled      = true,
         maxDistance  = 5000,
-        scanInterval = 5,
+        scanInterval = 3,
         tpKey        = Enum.KeyCode.T,
     },
     Waypoint = {
@@ -99,23 +104,43 @@ local CONFIG = {
         antiAfk       = true,
     },
     Hop = {
-        auto       = false,
-        delay      = 30,
-        minPlayers = 0,
-        maxPlayers = 10,
+        auto        = false,
+        delay       = 30,
+        minPlayers  = 0,
+        maxPlayers  = 10,
         privateLink = "",
     },
     Farm = {
-        target       = "Any",   -- Any | Legendary+ | Mythical | <NomDeFruit>
+        mode         = "Fruits",   -- Fruits | Chests
+        target       = "Any",
         autoStore    = true,
         hopOnEmpty   = true,
         solo         = false,
         pickupRetry  = 3,
         collectDelay = 0.8,
     },
+    Stats = {
+        active       = false,
+        pointsPerTick= 1,
+        enabled      = { Melee = true, Defense = true, Sword = false, Gun = false, ["Demon Fruit"] = false },
+    },
 }
 
-local TARGET_CYCLE = { "Any", "Legendary+", "Mythical", "Dragon", "Leopard", "Kitsune", "Dough", "Venom" }
+local ESP_ON = {
+    Fruit  = true,
+    Chest  = true,
+    Berry  = false,
+    Flower = false,
+    Dealer = false,
+    Player = false,
+}
+
+local TARGET_CYCLE = {
+    "Any", "Legendary+", "Mythical",
+    "Dragon", "Leopard", "Kitsune", "Dough", "Venom", "Shadow", "Control",
+}
+
+local STAT_LIST = { "Melee", "Defense", "Sword", "Gun", "Demon Fruit" }
 
 -- ══════════════════════════════════════════════════════════════
 --  UTILS
@@ -131,14 +156,14 @@ local function httpGet(url)
     pcall(function()
         if game.HttpGet then fn = function(u) return game:HttpGet(u) end end
     end)
-    if not fn and syn and syn.request then
-        fn = function(u) return syn.request({ Url = u, Method = "GET" }).Body end
-    end
-    if not fn and request then
+    if not fn and type(request) == "function" then
         fn = function(u) local r = request({ Url = u, Method = "GET" }); return r and r.Body end
     end
-    if not fn and http_request then
-        fn = function(u) return http_request({ Url = u, Method = "GET" }).Body end
+    if not fn and type(http_request) == "function" then
+        fn = function(u) local r = http_request({ Url = u, Method = "GET" }); return r and r.Body end
+    end
+    if not fn and syn and type(syn.request) == "function" then
+        fn = function(u) local r = syn.request({ Url = u, Method = "GET" }); return r and r.Body end
     end
     if not fn then return nil end
     local ok, body = pcall(fn, url)
@@ -155,8 +180,29 @@ local function getHRP()
     return char and char:FindFirstChild("HumanoidRootPart")
 end
 
+local function getRoot(inst)
+    if inst:IsA("BasePart") then return inst end
+    if inst:IsA("Model") then
+        return inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart", true)
+    end
+    if inst:IsA("Tool") then
+        return inst:FindFirstChild("Handle") or inst:FindFirstChildWhichIsA("BasePart", true)
+    end
+    return nil
+end
+
+local function getPosition(inst)
+    if inst:IsA("BasePart") then return inst.Position end
+    if inst:IsA("Model") then
+        local ok, pivot = pcall(function() return inst:GetPivot().Position end)
+        if ok and pivot then return pivot end
+    end
+    local root = getRoot(inst)
+    return root and root.Position or nil
+end
+
 -- ══════════════════════════════════════════════════════════════
---  FRUIT DATABASE
+--  FRUITS
 -- ══════════════════════════════════════════════════════════════
 local TIER_COLORS = {
     Common    = Color3.fromRGB(190, 190, 190),
@@ -218,25 +264,12 @@ local function matchFruit(rawName)
     return entry
 end
 
-local function getRoot(inst)
-    if inst:IsA("BasePart") then return inst end
-    if inst:IsA("Model") then
-        return inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart", true)
-    end
-    if inst:IsA("Tool") then
-        return inst:FindFirstChild("Handle") or inst:FindFirstChildWhichIsA("BasePart", true)
-    end
-    return nil
-end
-
-local function getPosition(inst)
-    if inst:IsA("BasePart") then return inst.Position end
-    if inst:IsA("Model") then
-        local ok, pivot = pcall(function() return inst:GetPivot().Position end)
-        if ok and pivot then return pivot end
-    end
-    local root = getRoot(inst)
-    return root and root.Position or nil
+local function fruitFilter(entry)
+    local t = CONFIG.Farm.target
+    if t == "Any" then return true end
+    if t == "Legendary+" then return (TIER_ORDER[entry.tier] or 0) >= 4 end
+    if t == "Mythical" then return entry.tier == "Mythical" end
+    return entry.name == t
 end
 
 -- ══════════════════════════════════════════════════════════════
@@ -406,125 +439,247 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- ══════════════════════════════════════════════════════════════
---  RADAR
+--  CLASSIFICATION — une instance = une catégorie
 -- ══════════════════════════════════════════════════════════════
-local Radar = { tracked = {}, connections = {}, cooldown = {} }
+local function isPlayerCharacter(inst)
+    if not inst:IsA("Model") then return false end
+    local hum = inst:FindFirstChildOfClass("Humanoid")
+    if not hum then return false end
+    return Players:GetPlayerFromCharacter(inst) ~= nil
+end
 
-local function isCandidate(inst)
+-- Retourne : categorie, label, couleur, priorité
+local function classify(inst)
     if not (inst:IsA("Model") or inst:IsA("BasePart") or inst:IsA("Tool")) then
         return nil
     end
+    if isPlayerCharacter(inst) then return nil end
 
-    local char = getChar()
-    if char and inst:IsDescendantOf(char) then return nil end
-    if inst:IsA("Tool") and inst.Parent ~= workspace then return nil end
+    local name = inst.Name
+    local lower = name:lower()
 
-    local entry = matchFruit(inst.Name)
-    if not entry then return nil end
-
-    local p = inst.Parent
-    while p and p ~= workspace do
-        if matchFruit(p.Name) then return nil end
-        p = p.Parent
+    local fruit = matchFruit(name)
+    if fruit then
+        return "Fruit", fruit.name, (TIER_COLORS[fruit.tier] or C.accent), {
+            tier = fruit.tier, path = fruit.name, kind = "fruit",
+        }
     end
 
-    return entry
+    if lower:match("^chest") then
+        local color = C.chest1
+        local quality = 1
+        if lower:find("chest3") then color, quality = C.chest3, 3
+        elseif lower:find("chest2") then color, quality = C.chest2, 2 end
+        return "Chest", name, color, { path = name, kind = "chest", quality = quality }
+    end
+
+    if lower:find("berry", 1, true) then
+        return "Berry", name, C.berry, { path = name, kind = "berry" }
+    end
+
+    if lower:find("flower", 1, true) then
+        return "Flower", name, C.flower, { path = name, kind = "flower" }
+    end
+
+    if lower:find("dealer", 1, true) then
+        return "Dealer", name, C.dealer, { path = name, kind = "dealer" }
+    end
+
+    return nil
 end
 
-function Radar.remove(inst)
-    local data = Radar.tracked[inst]
+-- ══════════════════════════════════════════════════════════════
+--  ESP
+-- ══════════════════════════════════════════════════════════════
+local ESP = {
+    items = {},        -- [inst] = { label, highlight, billboard, text, category, meta, pos }
+    connections = {},
+    cooldown = {},
+}
+
+local function espRemove(inst)
+    local data = ESP.items[inst]
     if not data then return end
     if data.highlight then pcall(function() data.highlight:Destroy() end) end
     if data.billboard then pcall(function() data.billboard:Destroy() end) end
-    Radar.tracked[inst] = nil
+    ESP.items[inst] = nil
 end
 
-function Radar.add(inst, entry, pos)
-    if Radar.tracked[inst] then return end
+local function espAdd(inst, category, label, color, meta)
+    if ESP.items[inst] then return end
     local root = getRoot(inst)
     if not root then return end
 
-    local color = TIER_COLORS[entry.tier] or C.accent
-
     local highlight = Instance.new("Highlight")
-    highlight.Name = "RFX_ESP"
+    highlight.Name = "RFX_HL"
     highlight.FillColor = color
     highlight.FillTransparency = 0.55
     highlight.OutlineColor = Color3.new(1, 1, 1)
     highlight.OutlineTransparency = 0.15
     highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    highlight.Enabled = CONFIG.Radar.enabled
+    highlight.Enabled = ESP_ON[category] == true
     highlight.Parent = inst:IsA("Model") and inst or root
 
     local billboard = Instance.new("BillboardGui")
-    billboard.Name = "RFX_LABEL"
+    billboard.Name = "RFX_BB"
     billboard.AlwaysOnTop = true
-    billboard.Size = UDim2.fromOffset(200, 36)
+    billboard.Size = UDim2.fromOffset(200, 34)
     billboard.StudsOffset = Vector3.new(0, 2.5, 0)
     billboard.Adornee = root
-    billboard.Enabled = CONFIG.Radar.enabled
+    billboard.Enabled = ESP_ON[category] == true
 
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.fromScale(1, 1)
-    label.BackgroundTransparency = 1
-    label.Text = entry.name
-    label.TextColor3 = color
-    label.TextStrokeTransparency = 0.35
-    label.TextScaled = true
-    label.Font = Enum.Font.GothamBold
-    label.Parent = billboard
+    local text = Instance.new("TextLabel")
+    text.Size = UDim2.fromScale(1, 1)
+    text.BackgroundTransparency = 1
+    text.Text = label
+    text.TextColor3 = color
+    text.TextStrokeTransparency = 0.35
+    text.TextScaled = true
+    text.Font = Enum.Font.GothamBold
+    text.Parent = billboard
 
     billboard.Parent = root
 
-    Radar.tracked[inst] = {
-        entry = entry, pos = pos, highlight = highlight,
-        billboard = billboard, label = label, lastText = "",
+    ESP.items[inst] = {
+        category = category,
+        label = label,
+        meta = meta,
+        highlight = highlight,
+        billboard = billboard,
+        text = text,
+        pos = getPosition(inst),
+        lastText = "",
     }
 end
 
-function Radar.scanContainer(container)
-    local list = container:GetDescendants()
-    for i, inst in ipairs(list) do
-        if not Radar.tracked[inst] then
-            local entry = isCandidate(inst)
-            if entry then
-                local pos = getPosition(inst)
-                if pos then Radar.add(inst, entry, pos) end
+local function espSetCategory(category, enabled)
+    ESP_ON[category] = enabled
+    for _, data in pairs(ESP.items) do
+        if data.category == category then
+            if data.highlight then data.highlight.Enabled = enabled end
+            if data.billboard then data.billboard.Enabled = enabled end
+        end
+    end
+end
+
+local function espClear()
+    for inst in pairs(ESP.items) do espRemove(inst) end
+end
+
+local function classifyAndAdd(inst)
+    if ESP.items[inst] then return end
+    local category, label, color, meta = classify(inst)
+    if category then espAdd(inst, category, label, color, meta) end
+end
+
+local function scanWorld()
+    for _, inst in ipairs(workspace:GetChildren()) do
+        classifyAndAdd(inst)
+    end
+end
+
+local function playerESP()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            local char = plr.Character
+            if char and char.Parent then
+                local existing = ESP.items[char]
+                if not existing then
+                    espAdd(char, "Player", plr.Name, C.player, { kind = "player", userId = plr.UserId })
+                end
             end
         end
-        if i % 400 == 0 then task.wait() end
+    end
+    for inst, data in pairs(ESP.items) do
+        if data.category == "Player" then
+            local plr = Players:GetPlayerFromCharacter(inst)
+            if not plr then espRemove(inst) end
+        end
     end
 end
 
-function Radar.clear()
-    for inst in pairs(Radar.tracked) do Radar.remove(inst) end
-end
+ESP.connections[#ESP.connections + 1] = workspace.ChildAdded:Connect(function(inst)
+    task.defer(function()
+        if inst.Parent == workspace then classifyAndAdd(inst) end
+    end)
+end)
 
-function Radar.setEnabled(state)
-    CONFIG.Radar.enabled = state
-    for _, data in pairs(Radar.tracked) do
-        if data.highlight then data.highlight.Enabled = state end
-        if data.billboard then data.billboard.Enabled = state end
+ESP.connections[#ESP.connections + 1] = workspace.ChildRemoved:Connect(function(inst)
+    if ESP.items[inst] then espRemove(inst) end
+end)
+
+ESP.connections[#ESP.connections + 1] = Players.PlayerAdded:Connect(function()
+    task.wait(1)
+    playerESP()
+end)
+
+ESP.connections[#ESP.connections + 1] = Players.PlayerRemoving:Connect(function(plr)
+    if plr.Character and ESP.items[plr.Character] then
+        espRemove(plr.Character)
     end
-end
+end)
 
-function Radar.count()
-    local n = 0
-    for _ in pairs(Radar.tracked) do n = n + 1 end
-    return n
-end
+task.spawn(function()
+    while true do
+        task.wait(CONFIG.Radar.scanInterval)
+        pcall(scanWorld)
+        pcall(playerESP)
+    end
+end)
 
-function Radar.nearest(filterFn)
+task.spawn(function()
+    task.wait(0.5)
+    pcall(scanWorld)
+    pcall(playerESP)
+end)
+
+local espAcc = 0
+ESP.connections[#ESP.connections + 1] = RunService.Heartbeat:Connect(function(dt)
+    espAcc = espAcc + dt
+    if espAcc < 0.15 then return end
+    espAcc = 0
+
+    local hrp = getHRP()
+    if not hrp then return end
+
+    for inst, data in pairs(ESP.items) do
+        if not inst.Parent then
+            espRemove(inst)
+        else
+            local pos = getPosition(inst)
+            data.pos = pos
+            if pos then
+                local dist = (pos - hrp.Position).Magnitude
+                local txt = string.format("%s  •  %dm", data.label, math.floor(dist + 0.5))
+                if txt ~= data.lastText then
+                    if data.text then data.text.Text = txt end
+                    data.lastText = txt
+                end
+                local shown = ESP_ON[data.category] == true and dist <= CONFIG.Radar.maxDistance
+                if data.billboard then data.billboard.Visible = shown end
+                if data.highlight then data.highlight.Enabled = shown end
+            end
+        end
+    end
+end)
+
+-----------------------------------------------------------------
+--  recherche / action
+-----------------------------------------------------------------
+local function nearest(category, filterFn)
     local hrp = getHRP()
     if not hrp then return nil, nil end
 
     local best, bestDist, bestPos
-    for inst, data in pairs(Radar.tracked) do
+    for inst, data in pairs(ESP.items) do
         local skip = false
-        local untilTime = Radar.cooldown[inst]
+        local untilTime = ESP.cooldown[inst]
         if untilTime and os.clock() < untilTime then skip = true end
-        if not skip and inst.Parent and data.pos then
-            if not filterFn or filterFn(data.entry) then
+
+        if not skip and inst.Parent and data.pos and data.category == category then
+            local ok = true
+            if filterFn then ok = filterFn(data) end
+            if ok then
                 local d = (data.pos - hrp.Position).Magnitude
                 if not bestDist or d < bestDist then
                     best, bestDist, bestPos = inst, d, data.pos
@@ -535,7 +690,7 @@ function Radar.nearest(filterFn)
     return best, bestPos
 end
 
-function Radar.pickup(inst)
+local function collect(inst)
     if not inst or not inst.Parent then return false end
 
     local root = getRoot(inst)
@@ -557,60 +712,8 @@ function Radar.pickup(inst)
     return true
 end
 
-Radar.connections[#Radar.connections + 1] = workspace.DescendantAdded:Connect(function(inst)
-    if Radar.tracked[inst] then return end
-    local entry = isCandidate(inst)
-    if entry then
-        local pos = getPosition(inst)
-        if pos then Radar.add(inst, entry, pos) end
-    end
-end)
-
-task.spawn(function()
-    while true do
-        task.wait(CONFIG.Radar.scanInterval)
-        if CONFIG.Radar.enabled then
-            pcall(function() Radar.scanContainer(workspace) end)
-        end
-    end
-end)
-
-task.spawn(function()
-    task.wait(0.5)
-    pcall(function() Radar.scanContainer(workspace) end)
-end)
-
-local updateAcc = 0
-Radar.connections[#Radar.connections + 1] = RunService.Heartbeat:Connect(function(dt)
-    updateAcc = updateAcc + dt
-    if updateAcc < 0.15 then return end
-    updateAcc = 0
-
-    local hrp = getHRP()
-    if not hrp then return end
-
-    for inst, data in pairs(Radar.tracked) do
-        if not inst.Parent then
-            Radar.remove(inst)
-        else
-            local pos = getPosition(inst)
-            data.pos = pos
-            if pos and data.label then
-                local dist = (pos - hrp.Position).Magnitude
-                local txt = string.format("%s  •  %dm", data.entry.name, math.floor(dist + 0.5))
-                if txt ~= data.lastText then
-                    data.label.Text = txt
-                    data.lastText = txt
-                end
-                data.label.Visible = CONFIG.Radar.enabled and dist <= CONFIG.Radar.maxDistance
-                if data.highlight then data.highlight.Enabled = CONFIG.Radar.enabled end
-            end
-        end
-    end
-end)
-
 -- ══════════════════════════════════════════════════════════════
---  STORE (auto store fruit)
+--  STORE
 -- ══════════════════════════════════════════════════════════════
 local Store = { stored = 0 }
 
@@ -658,17 +761,14 @@ function Store.one(tool)
     for _, attempt in ipairs(attempts) do
         pcall(attempt)
         task.wait(0.12)
-        if not tool.Parent or tool.Parent == game then
-            return true
-        end
+        if not tool.Parent then return true end
     end
     return false
 end
 
 function Store.all()
-    local tools = Store.tools()
     local done = 0
-    for _, tool in ipairs(tools) do
+    for _, tool in ipairs(Store.tools()) do
         if Store.one(tool) then
             done = done + 1
             Store.stored = Store.stored + 1
@@ -676,6 +776,81 @@ function Store.all()
     end
     return done
 end
+
+-- ══════════════════════════════════════════════════════════════
+--  STATS — allocation automatique des points
+-- ══════════════════════════════════════════════════════════════
+local Stats = { lastError = "", spent = 0 }
+
+local function playerData()
+    local ok, data = pcall(function() return LocalPlayer.Data end)
+    if ok then return data end
+    return nil
+end
+
+function Stats.points()
+    local data = playerData()
+    if not data then return 0 end
+    local ok, points = pcall(function()
+        local p = data:FindFirstChild("Points")
+        return p and p.Value or 0
+    end)
+    if ok and type(points) == "number" then return points end
+    return 0
+end
+
+function Stats.level(stat)
+    local data = playerData()
+    if not data then return 0 end
+    local ok, level = pcall(function()
+        local statsFolder = data:FindFirstChild("Stats")
+        if not statsFolder then return 0 end
+        local statFolder = statsFolder:FindFirstChild(stat)
+        if not statFolder then return 0 end
+        local lvl = statFolder:FindFirstChild("Level")
+        return lvl and lvl.Value or 0
+    end)
+    if ok and type(level) == "number" then return level end
+    return 0
+end
+
+function Stats.spend(stat, amount)
+    local remote = Remotes.get()
+    if not remote then return false end
+    local points = Stats.points()
+    if points < 1 then return false end
+
+    local spend = math.clamp(amount, 1, points)
+    local ok = pcall(function()
+        remote:InvokeServer("AddPoint", stat, spend)
+    end)
+
+    if ok then
+        Stats.spent = Stats.spent + spend
+        return true
+    end
+    Stats.lastError = "AddPoint refusé"
+    return false
+end
+
+function Stats.priorityStat()
+    for _, stat in ipairs(STAT_LIST) do
+        if CONFIG.Stats.enabled[stat] then return stat end
+    end
+    return nil
+end
+
+task.spawn(function()
+    while true do
+        task.wait(0.4)
+        if CONFIG.Stats.active then
+            local stat = Stats.priorityStat()
+            if stat and Stats.points() >= 1 then
+                Stats.spend(stat, CONFIG.Stats.pointsPerTick)
+            end
+        end
+    end
+end)
 
 -- ══════════════════════════════════════════════════════════════
 --  HOP
@@ -786,22 +961,14 @@ TeleportService.TeleportInitFailed:Connect(function()
 end)
 
 -- ══════════════════════════════════════════════════════════════
---  FARM — la boucle complète
+--  FARM
 -- ══════════════════════════════════════════════════════════════
 local Farm = {
     active = false,
     token  = 0,
-    stats  = { collected = 0, stored = 0, hops = 0, seen = 0 },
+    stats  = { seen = 0, collected = 0, stored = 0, hops = 0 },
     label  = nil,
 }
-
-function Farm.filter(entry)
-    local t = CONFIG.Farm.target
-    if t == "Any" then return true end
-    if t == "Legendary+" then return (TIER_ORDER[entry.tier] or 0) >= 4 end
-    if t == "Mythical" then return entry.tier == "Mythical" end
-    return entry.name == t
-end
 
 local function farmStatsText()
     return string.format(
@@ -814,26 +981,29 @@ function Farm.refreshStats()
     if Farm.label then Farm.label.Text = farmStatsText() end
 end
 
-function Farm.collect(inst, pos)
-    Movement.tp(pos)
-    task.wait(0.3)
-
-    for _ = 1, 25 do
+local function waitNear(inst, maxDist, tries)
+    for _ = 1, tries or 25 do
         local hrp = getHRP()
         local p = getPosition(inst)
-        if not hrp or not p or not inst.Parent then break end
-        if (hrp.Position - p).Magnitude < 12 then break end
+        if not hrp or not p or not inst.Parent then return false end
+        if (hrp.Position - p).Magnitude < (maxDist or 12) then return true end
         task.wait(0.06)
     end
+    return false
+end
 
-    Radar.pickup(inst)
+local function farmOne(inst, pos)
+    Movement.tp(pos)
+    task.wait(0.25)
+    waitNear(inst, 14, 20)
+
+    collect(inst)
 
     for _ = 1, CONFIG.Farm.pickupRetry do
-        task.wait(0.35)
+        task.wait(0.3)
         if not inst.Parent then return true end
-        Radar.pickup(inst)
+        collect(inst)
     end
-
     return not inst.Parent
 end
 
@@ -843,32 +1013,29 @@ function Farm.start()
     Farm.token = Farm.token + 1
     local myToken = Farm.token
 
-    Radar.setEnabled(true)
-
     task.spawn(function()
-        task.wait(1.2)
+        task.wait(1)
 
         while Farm.active and Farm.token == myToken do
-            if not getChar() or not getHRP() then
+            if not getHRP() then
                 task.wait(0.5)
-            else
-                local inst, pos = Radar.nearest(Farm.filter)
+            elseif CONFIG.Farm.mode == "Fruits" then
+                local inst, pos = nearest("Fruit", fruitFilter)
 
                 if inst and pos then
                     Farm.stats.seen = Farm.stats.seen + 1
                     setStatus("farm → " .. inst.Name)
                     Farm.refreshStats()
 
-                    local ok = Farm.collect(inst, pos)
-                    if ok then
+                    if farmOne(inst, pos) then
                         Farm.stats.collected = Farm.stats.collected + 1
                         setStatus("ramassé " .. inst.Name)
                     else
-                        Radar.cooldown[inst] = os.clock() + 12
-                        setStatus("échec pickup — cooldown " .. inst.Name)
+                        ESP.cooldown[inst] = os.clock() + 12
+                        setStatus("échec pickup — cooldown")
                     end
 
-                    Radar.remove(inst)
+                    ESP.cooldown[inst] = ESP.cooldown[inst] or (os.clock() + 3)
                     Farm.refreshStats()
 
                     if CONFIG.Farm.autoStore then
@@ -881,17 +1048,35 @@ function Farm.start()
                     end
 
                     task.wait(CONFIG.Farm.collectDelay)
+                elseif CONFIG.Farm.hopOnEmpty then
+                    Farm.stats.hops = Farm.stats.hops + 1
+                    setStatus("aucun fruit — hop")
+                    Farm.refreshStats()
+                    Hop.execute(CONFIG.Farm.solo)
+                    task.wait(6)
                 else
-                    if CONFIG.Farm.hopOnEmpty then
-                        Farm.stats.hops = Farm.stats.hops + 1
-                        setStatus("aucun fruit — hop")
-                        Farm.refreshStats()
-                        Hop.execute(CONFIG.Farm.solo)
-                        task.wait(6)
+                    setStatus("aucun fruit — attente")
+                    task.wait(2)
+                end
+            else
+                -- mode coffres
+                local inst, pos = nearest("Chest")
+
+                if inst and pos then
+                    Farm.stats.seen = Farm.stats.seen + 1
+                    setStatus("coffre → " .. inst.Name)
+
+                    if farmOne(inst, pos) then
+                        Farm.stats.collected = Farm.stats.collected + 1
+                        setStatus("coffre ouvert")
                     else
-                        setStatus("aucun fruit — attente")
-                        task.wait(2)
+                        ESP.cooldown[inst] = os.clock() + 15
                     end
+                    Farm.refreshStats()
+                    task.wait(0.4)
+                else
+                    setStatus("aucun coffre — attente")
+                    task.wait(2)
                 end
             end
         end
@@ -915,12 +1100,15 @@ function Farm.toggle()
     return true
 end
 
--- auto-hop passif si le farm est off
+-- auto-hop passif hors farm
 task.spawn(function()
     while true do
         task.wait(1)
         if not Farm.active then
-            local any = Radar.count() > 0
+            local any = false
+            for _, data in pairs(ESP.items) do
+                if data.category == "Fruit" then any = true break end
+            end
             if any then Hop.lastSeen = os.clock() end
             if CONFIG.Hop.auto and not any
                 and (os.clock() - Hop.lastSeen) > CONFIG.Hop.delay then
@@ -967,16 +1155,6 @@ local function stroke(o, col, trans)
     return s
 end
 
-local function makeRow(parent)
-    local r = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 34),
-        BackgroundColor3 = C.row,
-        BorderSizePixel = 0,
-    }, parent)
-    corner(r, 6)
-    return r
-end
-
 local function makeLabel(parent, text, x, size)
     return new("TextLabel", {
         Size = size or UDim2.new(1, -16, 1, 0),
@@ -992,8 +1170,13 @@ local function makeLabel(parent, text, x, size)
 end
 
 local function makeToggle(parent, text, default, callback, accentColor)
-    local row = makeRow(parent)
-    makeLabel(row, text)
+    local row = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 34),
+        BackgroundColor3 = C.row,
+        BorderSizePixel = 0,
+    }, parent)
+    corner(row, 6)
+    local label = makeLabel(row, text)
 
     local accent = accentColor or C.accent
 
@@ -1037,6 +1220,9 @@ local function makeToggle(parent, text, default, callback, accentColor)
     end)
 
     return {
+        button = btn,
+        label = label,
+        row = row,
         set = function(v) state = v; refresh() end,
         get = function() return state end,
     }
@@ -1178,6 +1364,19 @@ local function makeSectionLabel(parent, text)
     })
 end
 
+local function makeInfo(parent, text, height)
+    return new("TextLabel", {
+        Size = UDim2.new(1, 0, 0, height or 18),
+        BackgroundTransparency = 1,
+        Text = text,
+        TextColor3 = C.sub,
+        Font = Enum.Font.Code,
+        TextSize = 11,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = parent,
+    })
+end
+
 ---------------------------------------------------------------
 --  ROOT
 ---------------------------------------------------------------
@@ -1191,7 +1390,7 @@ local okCore = pcall(function() gui.Parent = game:GetService("CoreGui") end)
 if not okCore or not gui.Parent then gui.Parent = PlayerGui end
 
 local main = new("Frame", {
-    Size = UDim2.fromOffset(430, 340),
+    Size = UDim2.fromOffset(448, 356),
     Position = UDim2.new(0, 40, 0, 90),
     BackgroundColor3 = C.bg,
     BorderSizePixel = 0,
@@ -1208,19 +1407,18 @@ local header = new("Frame", {
 corner(header, 10)
 
 new("TextLabel", {
-    Size = UDim2.new(0, 160, 1, 0),
+    Size = UDim2.new(0, 140, 1, 0),
     Position = UDim2.fromOffset(14, 0),
     BackgroundTransparency = 1,
-    Text = "RFX v2",
+    Text = "RFX v3",
     TextColor3 = C.accent,
     Font = Enum.Font.GothamBold,
     TextSize = 13,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, header)
 
--- bouton FARM rapide dans le header
 local headerFarmBtn = new("TextButton", {
-    Size = UDim2.fromOffset(74, 24),
+    Size = UDim2.fromOffset(70, 24),
     Position = UDim2.new(1, -196, 0.5, -12),
     BackgroundColor3 = C.accentDim,
     Text = "FARM",
@@ -1230,18 +1428,6 @@ local headerFarmBtn = new("TextButton", {
     BorderSizePixel = 0,
 }, header)
 corner(headerFarmBtn, 6)
-
-local closeBtn = new("TextButton", {
-    Size = UDim2.fromOffset(26, 26),
-    Position = UDim2.new(1, -34, 0.5, -13),
-    BackgroundColor3 = C.row,
-    Text = "×",
-    TextColor3 = C.danger,
-    Font = Enum.Font.GothamBold,
-    TextSize = 16,
-    BorderSizePixel = 0,
-}, header)
-corner(closeBtn, 6)
 
 local minBtn = new("TextButton", {
     Size = UDim2.fromOffset(26, 26),
@@ -1254,6 +1440,18 @@ local minBtn = new("TextButton", {
     BorderSizePixel = 0,
 }, header)
 corner(minBtn, 6)
+
+local closeBtn = new("TextButton", {
+    Size = UDim2.fromOffset(26, 26),
+    Position = UDim2.new(1, -34, 0.5, -13),
+    BackgroundColor3 = C.row,
+    Text = "×",
+    TextColor3 = C.danger,
+    Font = Enum.Font.GothamBold,
+    TextSize = 16,
+    BorderSizePixel = 0,
+}, header)
+corner(closeBtn, 6)
 
 local tabBar = new("Frame", {
     Size = UDim2.new(1, -16, 0, 30),
@@ -1283,7 +1481,7 @@ local statusBar = new("Frame", {
 corner(statusBar, 6)
 
 local statusText = new("TextLabel", {
-    Size = UDim2.new(0.52, -10, 1, 0),
+    Size = UDim2.new(0.55, -10, 1, 0),
     Position = UDim2.fromOffset(10, 0),
     BackgroundTransparency = 1,
     Text = "prêt",
@@ -1294,10 +1492,10 @@ local statusText = new("TextLabel", {
 }, statusBar)
 
 local countText = new("TextLabel", {
-    Size = UDim2.new(0.48, -10, 1, 0),
-    Position = UDim2.new(0.52, 0, 0, 0),
+    Size = UDim2.new(0.45, -10, 1, 0),
+    Position = UDim2.new(0.55, 0, 0, 0),
     BackgroundTransparency = 1,
-    Text = "0 fruit  •  0ms  •  60 fps",
+    Text = "0 cible  •  0ms  •  60 fps",
     TextColor3 = C.sub,
     Font = Enum.Font.Gotham,
     TextSize = 11,
@@ -1312,12 +1510,12 @@ UI.countLabel = countText
 ---------------------------------------------------------------
 local function createTab(name, order)
     local btn = new("TextButton", {
-        Size = UDim2.fromOffset(77, 30),
+        Size = UDim2.fromOffset(66, 30),
         BackgroundColor3 = C.panel,
         Text = name,
         TextColor3 = C.sub,
         Font = Enum.Font.GothamBold,
-        TextSize = 11,
+        TextSize = 10,
         BorderSizePixel = 0,
         LayoutOrder = order,
     }, tabBar)
@@ -1354,11 +1552,12 @@ local function createTab(name, order)
     return page
 end
 
-local farmPage    = createTab("Farm", 1)
-local radarPage   = createTab("Radar", 2)
-local waypointPage= createTab("TP", 3)
-local bypassPage  = createTab("Bypass", 4)
-local hopPage     = createTab("Hop", 5)
+local farmPage  = createTab("Farm", 1)
+local espPage   = createTab("ESP", 2)
+local tpPage    = createTab("TP", 3)
+local statsPage = createTab("Stats", 4)
+local protPage  = createTab("Protect", 5)
+local hopPage   = createTab("Hop", 6)
 
 local function showTab(name)
     for n, t in pairs(UI.tabs) do
@@ -1374,7 +1573,7 @@ showTab("Farm")
 --  FARM PAGE
 ---------------------------------------------------------------
 local farmBig = new("TextButton", {
-    Size = UDim2.new(1, 0, 0, 46),
+    Size = UDim2.new(1, 0, 0, 44),
     BackgroundColor3 = C.accentDim,
     Text = "FARM FRUIT  •  OFF",
     TextColor3 = C.text,
@@ -1389,13 +1588,13 @@ local guiMini = nil
 
 local function refreshFarmBig()
     if Farm.active then
-        farmBig.Text = "FARM FRUIT  •  ON"
+        farmBig.Text = "FARM " .. CONFIG.Farm.mode:upper() .. "  •  ON"
         farmBig.BackgroundColor3 = C.accent
         headerFarmBtn.BackgroundColor3 = C.accent
         headerFarmBtn.TextColor3 = C.bg
         if guiMini then guiMini.BackgroundColor3 = C.accent end
     else
-        farmBig.Text = "FARM FRUIT  •  OFF"
+        farmBig.Text = "FARM " .. CONFIG.Farm.mode:upper() .. "  •  OFF"
         farmBig.BackgroundColor3 = C.accentDim
         headerFarmBtn.BackgroundColor3 = C.accentDim
         headerFarmBtn.TextColor3 = C.text
@@ -1410,6 +1609,13 @@ local function toggleFarm()
 end
 
 farmBig.MouseButton1Click:Connect(toggleFarm)
+
+local modeBtn = makeButton(farmPage, "Mode : Fruits", function()
+    CONFIG.Farm.mode = (CONFIG.Farm.mode == "Fruits") and "Chests" or "Fruits"
+    modeBtn.Text = "Mode : " .. CONFIG.Farm.mode
+    refreshFarmBig()
+    setStatus("mode → " .. CONFIG.Farm.mode)
+end, 30)
 
 local targetBtn = makeButton(farmPage, "Cible : " .. CONFIG.Farm.target, function()
     local idx = 1
@@ -1426,7 +1632,7 @@ makeToggle(farmPage, "Auto store fruit", CONFIG.Farm.autoStore, function(v)
     CONFIG.Farm.autoStore = v
 end)
 
-makeToggle(farmPage, "Server hop si aucun fruit", CONFIG.Farm.hopOnEmpty, function(v)
+makeToggle(farmPage, "Server hop si vide", CONFIG.Farm.hopOnEmpty, function(v)
     CONFIG.Farm.hopOnEmpty = v
 end)
 
@@ -1441,7 +1647,7 @@ end)
 makeSectionLabel(farmPage, "Fruits en sac")
 
 local fruitRow = new("Frame", {
-    Size = UDim2.new(1, 0, 0, 64),
+    Size = UDim2.new(1, 0, 0, 60),
     BackgroundColor3 = C.row,
     BorderSizePixel = 0,
 }, farmPage)
@@ -1471,20 +1677,6 @@ makeButton(farmPage, "Store maintenant", function()
     Farm.refreshStats()
 end, 30)
 
-makeButton(farmPage, "Farm un seul passage", function()
-    task.spawn(function()
-        local wasActive = Farm.active
-        if not wasActive then Farm.start() end
-        task.wait(0.1)
-        if not wasActive then
-            task.wait(8)
-            Farm.stop()
-            refreshFarmBig()
-            setStatus("passage terminé")
-        end
-    end)
-end, 30)
-
 Farm.label = new("TextLabel", {
     Size = UDim2.new(1, 0, 0, 20),
     BackgroundTransparency = 1,
@@ -1497,119 +1689,167 @@ Farm.label = new("TextLabel", {
 })
 
 ---------------------------------------------------------------
---  RADAR PAGE
+--  ESP PAGE
 ---------------------------------------------------------------
-makeSectionLabel(radarPage, "Détection")
+makeSectionLabel(espPage, "Catégories")
 
-makeToggle(radarPage, "ESP fruits", CONFIG.Radar.enabled, function(v) Radar.setEnabled(v) end)
+makeToggle(espPage, "Fruits", ESP_ON.Fruit, function(v) espSetCategory("Fruit", v) end)
+makeToggle(espPage, "Coffres", ESP_ON.Chest, function(v) espSetCategory("Chest", v) end)
+makeToggle(espPage, "Baies (Berry)", ESP_ON.Berry, function(v) espSetCategory("Berry", v) end)
+makeToggle(espPage, "Fleurs", ESP_ON.Flower, function(v) espSetCategory("Flower", v) end)
+makeToggle(espPage, "Dealers / PNJ", ESP_ON.Dealer, function(v) espSetCategory("Dealer", v) end)
+makeToggle(espPage, "Joueurs", ESP_ON.Player, function(v) espSetCategory("Player", v) end)
 
-makeSlider(radarPage, "Distance max (studs)", 200, 10000, CONFIG.Radar.maxDistance, function(v)
+makeSectionLabel(espPage, "Réglages")
+
+makeSlider(espPage, "Distance max (studs)", 200, 10000, CONFIG.Radar.maxDistance, function(v)
     CONFIG.Radar.maxDistance = v
 end)
 
-makeSectionLabel(radarPage, "Actions")
-
-makeButton(radarPage, "TP fruit le plus proche  (T)", function()
-    local inst, pos = Radar.nearest(Farm.filter)
-    if inst and pos then
-        Movement.tp(pos)
-        setStatus("tp → " .. inst.Name)
-    else
-        setStatus("aucun fruit détecté")
-    end
-end)
-
-makeButton(radarPage, "TP + ramasser", function()
-    local inst, pos = Radar.nearest(Farm.filter)
-    if inst and pos then
-        Movement.tp(pos)
-        task.delay(0.5, function() Radar.pickup(inst) end)
-        setStatus("tp + pickup → " .. inst.Name)
-    else
-        setStatus("aucun fruit détecté")
-    end
-end)
-
-makeButton(radarPage, "Rescan maintenant", function()
+makeButton(espPage, "Rescan du monde", function()
     task.spawn(function()
-        Radar.clear()
-        Radar.scanContainer(workspace)
-        setStatus("rescan — " .. Radar.count() .. " fruit(s)")
+        espClear()
+        scanWorld()
+        playerESP()
+        local n = 0
+        for _ in pairs(ESP.items) do n = n + 1 end
+        setStatus("rescan — " .. n .. " cible(s)")
     end)
 end)
 
 ---------------------------------------------------------------
 --  TP PAGE
 ---------------------------------------------------------------
-makeSectionLabel(waypointPage, "Téléportation")
+makeSectionLabel(tpPage, "Téléportation")
 
-makeToggle(waypointPage, "TP par micro-pas", CONFIG.Waypoint.safeTp, function(v)
+makeToggle(tpPage, "TP par micro-pas", CONFIG.Waypoint.safeTp, function(v)
     CONFIG.Waypoint.safeTp = v
 end)
 
-makeSlider(waypointPage, "Taille du pas (studs)", 5, 150, CONFIG.Waypoint.stepStuds, function(v)
+makeSlider(tpPage, "Taille du pas (studs)", 5, 150, CONFIG.Waypoint.stepStuds, function(v)
     CONFIG.Waypoint.stepStuds = v
 end)
 
-makeSlider(waypointPage, "Délai entre pas (ms)", 8, 200, math.floor(CONFIG.Waypoint.stepDelay * 1000), function(v)
+makeSlider(tpPage, "Délai entre pas (ms)", 8, 200, math.floor(CONFIG.Waypoint.stepDelay * 1000), function(v)
     CONFIG.Waypoint.stepDelay = v / 1000
 end)
 
-makeSectionLabel(waypointPage, "Vitesse")
+makeSectionLabel(tpPage, "Raccourcis")
 
-makeSlider(waypointPage, "WalkSpeed", 16, 300, CONFIG.Movement.walkSpeed, function(v)
+makeButton(tpPage, "TP fruit le plus proche  (T)", function()
+    local inst, pos = nearest("Fruit", fruitFilter)
+    if inst and pos then
+        Movement.tp(pos)
+        setStatus("tp → " .. inst.Name)
+    else
+        setStatus("aucun fruit")
+    end
+end)
+
+makeButton(tpPage, "TP coffre le plus proche", function()
+    local inst, pos = nearest("Chest")
+    if inst and pos then
+        Movement.tp(pos)
+        setStatus("tp → " .. inst.Name)
+    else
+        setStatus("aucun coffre")
+    end
+end)
+
+makeButton(tpPage, "TP dealer", function()
+    local inst, pos = nearest("Dealer")
+    if inst and pos then
+        Movement.tp(pos)
+        setStatus("tp → " .. inst.Name)
+    else
+        setStatus("aucun dealer")
+    end
+end)
+
+makeSectionLabel(tpPage, "Vitesse")
+
+makeSlider(tpPage, "WalkSpeed", 16, 300, CONFIG.Movement.walkSpeed, function(v)
     Movement.setWalk(v)
 end)
 
-makeSlider(waypointPage, "JumpPower", 50, 300, CONFIG.Movement.jumpPower, function(v)
+makeSlider(tpPage, "JumpPower", 50, 300, CONFIG.Movement.jumpPower, function(v)
     Movement.setJump(v)
 end)
 
-makeToggle(waypointPage, "Anti-void", CONFIG.Movement.antiVoid, function(v)
+makeToggle(tpPage, "Anti-void", CONFIG.Movement.antiVoid, function(v)
     CONFIG.Movement.antiVoid = v
 end)
 
 ---------------------------------------------------------------
---  BYPASS PAGE
+--  STATS PAGE
 ---------------------------------------------------------------
-makeSectionLabel(bypassPage, "Protection client")
+local pointsInfo = makeInfo(statsPage, "points dispo : —", 18)
+local spentInfo = makeInfo(statsPage, "dépensés cette session : 0", 18)
 
-makeToggle(bypassPage, "Anti-kick (bloque LocalPlayer:Kick)", CONFIG.Protect.antiKick, function(v)
+makeSectionLabel(statsPage, "Priorité")
+
+local statToggles = {}
+for _, stat in ipairs(STAT_LIST) do
+    statToggles[stat] = makeToggle(statsPage, stat .. "  (" .. Stats.level(stat) .. ")", CONFIG.Stats.enabled[stat], function(v)
+        CONFIG.Stats.enabled[stat] = v
+    end)
+end
+
+makeSlider(statsPage, "Points par tick", 1, 100, CONFIG.Stats.pointsPerTick, function(v)
+    CONFIG.Stats.pointsPerTick = v
+end)
+
+makeToggle(statsPage, "Auto stats", CONFIG.Stats.active, function(v)
+    CONFIG.Stats.active = v
+    setStatus(v and "auto stats ON" or "auto stats OFF")
+end)
+
+makeButton(statsPage, "Dépenser tout maintenant", function()
+    local stat = Stats.priorityStat()
+    if not stat then
+        setStatus("aucune stat cochée")
+        return
+    end
+    local available = Stats.points()
+    if available < 1 then
+        setStatus("aucun point disponible")
+        return
+    end
+    if Stats.spend(stat, available) then
+        setStatus("+" .. available .. " " .. stat)
+    else
+        setStatus("AddPoint refusé")
+    end
+end)
+
+---------------------------------------------------------------
+--  PROTECT PAGE
+---------------------------------------------------------------
+makeSectionLabel(protPage, "Protection client")
+
+makeToggle(protPage, "Anti-kick (LocalPlayer:Kick)", CONFIG.Protect.antiKick, function(v)
     CONFIG.Protect.antiKick = v
     if v then Protect.hookKick() end
 end)
 
-makeToggle(bypassPage, "Spoof WalkSpeed / JumpPower", CONFIG.Protect.spoofHumanoid, function(v)
+makeToggle(protPage, "Spoof WalkSpeed / JumpPower", CONFIG.Protect.spoofHumanoid, function(v)
     CONFIG.Protect.spoofHumanoid = v
     if v then Protect.hookIndex() end
 end)
 
-makeToggle(bypassPage, "Anti-AFK", CONFIG.Protect.antiAfk, function(v)
+makeToggle(protPage, "Anti-AFK", CONFIG.Protect.antiAfk, function(v)
     CONFIG.Protect.antiAfk = v
 end)
 
-makeSectionLabel(bypassPage, "Diagnostic")
+makeSectionLabel(protPage, "Diagnostic")
 
-local function diagLine(text)
-    return new("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 18),
-        BackgroundTransparency = 1,
-        Text = text,
-        TextColor3 = C.sub,
-        Font = Enum.Font.Code,
-        TextSize = 11,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Parent = bypassPage,
-    })
-end
+makeInfo(protPage, "hookmetamethod      : " .. (type(hookmetamethod) == "function" and "OK" or "absent"))
+makeInfo(protPage, "getnamecallmethod   : " .. (type(getnamecallmethod) == "function" and "OK" or "absent"))
+makeInfo(protPage, "firetouchinterest   : " .. (type(firetouchinterest) == "function" and "OK" or "absent"))
+makeInfo(protPage, "fireproximityprompt : " .. (type(fireproximityprompt) == "function" and "OK" or "absent"))
+makeInfo(protPage, "CommF_              : " .. (Remotes.get() and "OK" or "absent"))
 
-diagLine("hookmetamethod      : " .. (type(hookmetamethod) == "function" and "OK" or "absent"))
-diagLine("getnamecallmethod   : " .. (type(getnamecallmethod) == "function" and "OK" or "absent"))
-diagLine("firetouchinterest   : " .. (type(firetouchinterest) == "function" and "OK" or "absent"))
-diagLine("fireproximityprompt : " .. (type(fireproximityprompt) == "function" and "OK" or "absent"))
-diagLine("CommF_              : " .. (Remotes.get() and "OK" or "absent"))
-
-makeButton(bypassPage, "Réinstaller les hooks", function()
+makeButton(protPage, "Réinstaller les hooks", function()
     Protect.kickHooked = false
     Protect.indexHooked = false
     local a = Protect.hookKick()
@@ -1624,7 +1864,6 @@ makeSectionLabel(hopPage, "Serveur")
 
 makeToggle(hopPage, "Auto-hop si aucun fruit", CONFIG.Hop.auto, function(v)
     CONFIG.Hop.auto = v
-    setStatus(v and "auto-hop activé" or "auto-hop off")
 end)
 
 makeSlider(hopPage, "Délai avant hop (s)", 5, 120, CONFIG.Hop.delay, function(v)
@@ -1636,7 +1875,6 @@ makeSlider(hopPage, "Joueurs max par serveur", 1, 30, CONFIG.Hop.maxPlayers, fun
 end)
 
 makeButton(hopPage, "Hop maintenant", function() Hop.execute(false) end)
-
 makeButton(hopPage, "Hop solo (le moins peuplé)", function() Hop.execute(true) end)
 
 local linkBox = new("TextBox", {
@@ -1661,7 +1899,7 @@ linkBox.FocusLost:Connect(function()
 end)
 
 ---------------------------------------------------------------
---  DRAG / MINIMIZE / MINI BOUTON
+--  DRAG / MINIMIZE
 ---------------------------------------------------------------
 local dragging = false
 local dragStart, startPos
@@ -1696,24 +1934,23 @@ local minimized = false
 minBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
     if minimized then
-        main:TweenSize(UDim2.fromOffset(430, 38), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.18, true)
+        main:TweenSize(UDim2.fromOffset(448, 38), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.18, true)
         contentArea.Visible = false
         tabBar.Visible = false
         statusBar.Visible = false
     else
-        main:TweenSize(UDim2.fromOffset(430, 340), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.18, true)
+        main:TweenSize(UDim2.fromOffset(448, 356), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.18, true)
         contentArea.Visible = true
         tabBar.Visible = true
         statusBar.Visible = true
     end
 end)
 
--- bouton flottant quand le panneau est fermé
 guiMini = new("TextButton", {
     Size = UDim2.fromOffset(54, 54),
     Position = UDim2.new(1, -74, 0.5, -27),
     BackgroundColor3 = C.panel,
-    Text = "FARM",
+    Text = "RFX",
     TextColor3 = C.accent,
     Font = Enum.Font.GothamBold,
     TextSize = 11,
@@ -1769,52 +2006,61 @@ headerFarmBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ══════════════════════════════════════════════════════════════
---  FPS / STATS
+--  BOUCLE UI (fps, stats, liste du sac)
 -- ══════════════════════════════════════════════════════════════
 UI.connections[#UI.connections + 1] = RunService.RenderStepped:Connect(function()
     UI.frames = UI.frames + 1
     local now = os.clock()
-    if now - UI.fpsClock >= 0.5 then
-        UI.fps = math.floor(UI.frames / (now - UI.fpsClock) + 0.5)
-        UI.frames = 0
-        UI.fpsClock = now
+    if now - UI.fpsClock < 0.5 then return end
 
-        local ping = 0
-        pcall(function() ping = math.floor(LocalPlayer:GetNetworkPing() * 1000) end)
+    UI.fps = math.floor(UI.frames / (now - UI.fpsClock) + 0.5)
+    UI.frames = 0
+    UI.fpsClock = now
 
-        UI.countLabel.Text = string.format(
-            "%d fruit  •  %dms  •  %d fps", Radar.count(), ping, UI.fps
-        )
+    local ping = 0
+    pcall(function() ping = math.floor(LocalPlayer:GetNetworkPing() * 1000) end)
 
-        local tools = Store.tools()
-        if #tools > 0 then
-            local names = {}
-            for i, t in ipairs(tools) do
-                if i > 6 then names[#names + 1] = "…" break end
-                names[#names + 1] = t.Name
-            end
-            fruitListLbl.Text = table.concat(names, "  ·  ")
-            fruitListLbl.TextColor3 = C.gold
-        else
-            fruitListLbl.Text = "aucun fruit en sac"
-            fruitListLbl.TextColor3 = C.sub
+    local count = 0
+    for _ in pairs(ESP.items) do count = count + 1 end
+    UI.countLabel.Text = string.format("%d cible  •  %dms  •  %d fps", count, ping, UI.fps)
+
+    local tools = Store.tools()
+    if #tools > 0 then
+        local names = {}
+        for i, t in ipairs(tools) do
+            if i > 6 then names[#names + 1] = "…" break end
+            names[#names + 1] = t.Name
+        end
+        fruitListLbl.Text = table.concat(names, "  ·  ")
+        fruitListLbl.TextColor3 = C.gold
+    else
+        fruitListLbl.Text = "aucun fruit en sac"
+        fruitListLbl.TextColor3 = C.sub
+    end
+
+    pointsInfo.Text = "points dispo : " .. Stats.points()
+    spentInfo.Text = "dépensés cette session : " .. Stats.spent
+
+    for _, stat in ipairs(STAT_LIST) do
+        local t = statToggles[stat]
+        if t and t.label then
+            t.label.Text = stat .. "  (" .. Stats.level(stat) .. ")"
         end
     end
 end)
 
 ---------------------------------------------------------------
---  KEYBINDS
+--  KEYBIND
 ---------------------------------------------------------------
 UI.connections[#UI.connections + 1] = UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
-
     if input.KeyCode == CONFIG.Radar.tpKey then
-        local inst, pos = Radar.nearest(Farm.filter)
+        local inst, pos = nearest("Fruit", fruitFilter)
         if inst and pos then
             Movement.tp(pos)
             setStatus("tp → " .. inst.Name)
         else
-            setStatus("aucun fruit détecté")
+            setStatus("aucun fruit")
         end
     end
 end)
@@ -1824,18 +2070,19 @@ end)
 -- ══════════════════════════════════════════════════════════════
 _G.RFX_Unload = function()
     Farm.stop()
+    CONFIG.Stats.active = false
     CONFIG.Protect.antiKick = false
     CONFIG.Protect.spoofHumanoid = false
     CONFIG.Protect.antiAfk = false
-    CONFIG.Radar.enabled = false
+    for category in pairs(ESP_ON) do ESP_ON[category] = false end
 
-    for _, c in ipairs(Radar.connections) do pcall(function() c:Disconnect() end) end
+    for _, c in ipairs(ESP.connections) do pcall(function() c:Disconnect() end) end
     for _, c in ipairs(UI.connections) do pcall(function() c:Disconnect() end) end
 
-    Radar.clear()
+    espClear()
     pcall(function() gui:Destroy() end)
     _G.RFX_Unload = nil
 end
 
-setStatus("prêt — FARM dans le header, T = tp")
+setStatus("prêt — T = tp fruit")
 refreshFarmBig()
